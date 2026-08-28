@@ -2606,3 +2606,46 @@ html[dir="rtl"] .hero::after {
 #memberDetail .data-list > div {
   border-color: rgba(255, 255, 255, 0.12);
 }
+
+/* ---- Legal / privacy document ---- */
+.legal-doc {
+  max-width: 760px;
+  margin-inline: auto;
+  display: block;
+  line-height: 1.7;
+}
+
+.legal-doc h1 {
+  font-size: 30px;
+  margin: 4px 0 6px;
+}
+
+.legal-doc h2 {
+  font-size: 18px;
+  margin: 26px 0 8px;
+}
+
+.legal-doc p {
+  margin: 0 0 12px;
+  color: var(--color-graphite);
+}
+
+.legal-doc ul {
+  margin: 0 0 12px;
+  padding-inline-start: 22px;
+  color: var(--color-graphite);
+}
+
+.legal-doc li {
+  margin-block: 6px;
+}
+
+.legal-doc a {
+  color: var(--color-red-strong);
+  font-weight: 700;
+}
+
+.legal-updated {
+  font-size: 13px;
+  color: var(--color-muted);
+}
