@@ -19,7 +19,12 @@
     "auth.passwordHint": "Use at least 8 characters with one uppercase letter, one number, and one special character.",
     "auth.registerSuccess": "Account created. Redirecting.",
     "payment.completed": "Payment completed",
-    "membership.activated": "Membership activated"
+    "membership.activated": "Membership activated",
+    "admin.exportExcel": "Export Excel",
+    "admin.exportPdf": "Export PDF",
+    "admin.exportRunning": "Preparing the file…",
+    "admin.exportDone": "Download started.",
+    "admin.exportFailed": "Export failed. Please try again."
   });
 
   Object.assign(window.GymI18n.dictionary.ar, {
@@ -38,6 +43,11 @@
     "auth.passwordHint": "استخدم 8 أحرف على الأقل مع حرف كبير ورقم ورمز خاص.",
     "auth.registerSuccess": "تم إنشاء الحساب. جارٍ التحويل.",
     "payment.completed": "تم الدفع",
-    "membership.activated": "تم تفعيل العضوية"
+    "membership.activated": "تم تفعيل العضوية",
+    "admin.exportExcel": "تصدير Excel",
+    "admin.exportPdf": "تصدير PDF",
+    "admin.exportRunning": "جارٍ تجهيز الملف…",
+    "admin.exportDone": "بدأ التنزيل.",
+    "admin.exportFailed": "تعذّر التصدير. حاول مرة أخرى."
   });
 })();

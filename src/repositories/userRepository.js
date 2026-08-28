@@ -211,6 +211,35 @@ async function listUsers({ page = 1, pageSize = 10, search = "", status = "", me
   };
 }
 
+async function exportMembers({ limit = 10000 } = {}) {
+  ensureDatabase();
+  const cap = Math.min(Math.max(Number.parseInt(limit, 10) || 10000, 1), 50000);
+  return query(
+    `SELECT u.id, u.member_code, u.full_name, u.email, u.phone,
+       u.status AS account_status, u.created_at,
+       lm.status AS membership_status, lm.start_date, lm.end_date,
+       lm.plan_en, lm.plan_ar
+     FROM users u
+     LEFT JOIN (
+       SELECT ranked.user_id, ranked.status, ranked.start_date, ranked.end_date,
+              pl.name_en AS plan_en, pl.name_ar AS plan_ar
+       FROM (
+         SELECT mm.user_id, mm.status, mm.start_date, mm.end_date, mm.plan_id,
+                ROW_NUMBER() OVER (
+                  PARTITION BY mm.user_id
+                  ORDER BY COALESCE(mm.end_date, mm.created_at) DESC, mm.id DESC
+                ) AS rn
+         FROM memberships mm
+       ) ranked
+       JOIN plans pl ON pl.id = ranked.plan_id
+       WHERE ranked.rn = 1
+     ) lm ON lm.user_id = u.id
+     WHERE u.deleted_at IS NULL
+     ORDER BY u.created_at DESC
+     LIMIT ${cap}`
+  );
+}
+
 async function getUserDetails(id) {
   ensureDatabase();
   const [userRows, dashboard, tokens] = await Promise.all([
@@ -277,6 +306,7 @@ module.exports = {
   findById,
   findForLogin,
   getDashboard,
+  exportMembers,
   getUserDetails,
   listUsers,
   publicUser,

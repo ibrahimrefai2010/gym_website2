@@ -1,6 +1,8 @@
 const userRepository = require("../repositories/userRepository");
 const sessionRepository = require("../repositories/sessionRepository");
 const notificationRepository = require("../repositories/notificationRepository");
+const settingsRepository = require("../repositories/settingsRepository");
+const memberExportService = require("../services/memberExportService");
 const { assertSaudiPhone, assertStrongPassword, cleanString, pagination } = require("../utils/validator");
 const { createHttpError } = require("../utils/httpError");
 const { refreshTokenFromRequest } = require("../utils/cookies");
@@ -29,6 +31,37 @@ async function list(req, res) {
 async function detail(req, res) {
   const data = await userRepository.getUserDetails(req.params.id);
   res.json({ success: true, data });
+}
+
+async function exportMembers(req, res) {
+  const format = String(req.query.format || "xlsx").toLowerCase() === "pdf" ? "pdf" : "xlsx";
+  const lang = String(req.query.lang || "en").toLowerCase() === "ar" ? "ar" : "en";
+  const rows = await userRepository.exportMembers({ limit: req.query.limit });
+  const stamp = new Date().toISOString().slice(0, 10);
+
+  await createLog("admin", req.user?.id, "members.export", "users", null, { format, count: rows.length }, req.ip);
+
+  if (format === "pdf") {
+    let gymName = "Muscle and Fitness Center";
+    try {
+      const settings = await settingsRepository.publicSettings();
+      gymName = (lang === "ar" ? settings.gym_name_ar : settings.gym_name_en) || gymName;
+    } catch (_error) {
+      /* fall back to default name */
+    }
+    const buffer = await memberExportService.buildPdf(rows, lang, { gymName });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="members-${stamp}.pdf"`);
+    return res.send(buffer);
+  }
+
+  const buffer = await memberExportService.buildWorkbook(rows, lang);
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  );
+  res.setHeader("Content-Disposition", `attachment; filename="members-${stamp}.xlsx"`);
+  return res.send(Buffer.from(buffer));
 }
 
 async function updateProfile(req, res) {
@@ -81,6 +114,7 @@ module.exports = {
   changePassword,
   dashboard,
   detail,
+  exportMembers,
   list,
   me,
   updateProfile

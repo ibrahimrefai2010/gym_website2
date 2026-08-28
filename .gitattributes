@@ -13,3 +13,5 @@ Dockerfile.* text eol=lf
 *.jpg binary
 *.jpeg binary
 *.ico binary
+*.ttf binary
+*.otf binary

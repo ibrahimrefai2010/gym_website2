@@ -1408,6 +1408,48 @@
     });
   }
 
+  function setupExports() {
+    const message = document.querySelector("#exportMembersMessage");
+    const run = async (format, button) => {
+      if (!button) {
+        return;
+      }
+      const label = button.textContent;
+      button.disabled = true;
+      if (message) {
+        message.style.color = "";
+        message.textContent = t("admin.exportRunning");
+      }
+      try {
+        const lang = window.GymI18n.currentLang();
+        const stamp = new Date().toISOString().slice(0, 10);
+        await window.GymApi.download(
+          `/api/v1/users/export?format=${format}&lang=${lang}`,
+          `members-${stamp}.${format === "pdf" ? "pdf" : "xlsx"}`
+        );
+        if (message) {
+          message.style.color = "#c8a867";
+          message.textContent = t("admin.exportDone");
+        }
+      } catch (error) {
+        if (message) {
+          message.style.color = "";
+          message.textContent = error.message || t("admin.exportFailed");
+        }
+      } finally {
+        button.disabled = false;
+        button.textContent = label;
+      }
+    };
+
+    document
+      .querySelector("#exportMembersXlsx")
+      ?.addEventListener("click", (event) => run("xlsx", event.currentTarget));
+    document
+      .querySelector("#exportMembersPdf")
+      ?.addEventListener("click", (event) => run("pdf", event.currentTarget));
+  }
+
   function setupSession() {
     document.querySelector("#adminLogout")?.addEventListener("click", async () => {
       try {
@@ -1438,6 +1480,7 @@
     setupSlideActions();
     setupMessageActions();
     setupRbacActions();
+    setupExports();
     setupSession();
     load();
     window.addEventListener("languagechange", renderAll);

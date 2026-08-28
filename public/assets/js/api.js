@@ -77,6 +77,35 @@
     }
   }
 
+  async function download(path, filename) {
+    const send = () =>
+      fetch(path, {
+        credentials: "include",
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+      });
+
+    let response = await send();
+    if (response.status === 401 && accessToken) {
+      await refreshSession();
+      response = await send();
+    }
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      const message = typeof payload.error === "string" ? payload.error : payload.error?.message;
+      throw new Error(message || "Download failed.");
+    }
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename || "download";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+  }
+
   async function bootstrap() {
     try {
       return await request("/api/v1/public/bootstrap");
@@ -128,6 +157,7 @@
     bootstrap,
     clearSession,
     currentUser,
+    download,
     ensureSession,
     forgotPassword,
     login,
