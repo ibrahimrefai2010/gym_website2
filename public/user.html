@@ -13,7 +13,7 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800;900&display=swap"
       rel="stylesheet"
     >
-    <link rel="stylesheet" href="/assets/css/styles.css?v=2.1.0">
+    <link rel="stylesheet" href="/assets/css/styles.css?v=2.2.0">
   </head>
   <body class="panel-page">
     <a class="skip-link" href="#main" data-i18n="skip">Skip to content</a>
@@ -44,7 +44,10 @@
     <main class="container portal-shell" id="main">
       <div class="portal-head">
         <p class="eyebrow" data-i18n="portal.title">Member portal</p>
-        <h1 id="welcomeHeading" data-i18n="portal.title">Member portal</h1>
+        <div class="welcome-row">
+          <span class="avatar avatar-sm" id="welcomeAvatar" aria-hidden="true" hidden></span>
+          <h1 id="welcomeHeading" data-i18n="portal.title">Member portal</h1>
+        </div>
         <p data-i18n="portal.body">Manage your membership, payments, notifications, and account in one place.</p>
       </div>
 
@@ -153,6 +156,16 @@
       <section class="portal-section" id="section-account" aria-label="Account" hidden>
         <article class="panel">
           <p class="portal-section-title" data-i18n="portal.account.personal">Personal information</p>
+          <div class="avatar-row">
+            <span class="avatar" id="pfAvatar" aria-hidden="true"></span>
+            <div class="avatar-controls">
+              <label class="btn small secondary" for="pfAvatarInput" data-i18n="portal.photo.upload">Upload photo</label>
+              <input id="pfAvatarInput" type="file" accept="image/jpeg,image/png,image/webp" class="visually-hidden-input">
+              <button class="btn small ghost" type="button" id="pfAvatarRemove" hidden data-i18n="portal.photo.remove">Remove photo</button>
+              <p class="field-hint" data-i18n="portal.photo.hint">JPEG, PNG or WebP, up to 2MB.</p>
+              <p class="form-message" id="avatarMessage" aria-live="polite"></p>
+            </div>
+          </div>
           <form class="auth-form" id="personalForm" novalidate>
             <div class="field">
               <label for="pfFullName" data-i18n="field.name">Full name</label>
@@ -262,8 +275,8 @@
     <script src="/assets/js/data.js"></script>
     <script src="/assets/js/i18n.js"></script>
     <script src="/assets/js/ux-copy.js"></script>
-    <script src="/assets/js/portal-i18n.js"></script>
-    <script src="/assets/js/api.js"></script>
-    <script src="/assets/js/user-panel.js?v=2.1.0"></script>
+    <script src="/assets/js/portal-i18n.js?v=2.2.0"></script>
+    <script src="/assets/js/api.js?v=2.2.0"></script>
+    <script src="/assets/js/user-panel.js?v=2.2.0"></script>
   </body>
 </html>

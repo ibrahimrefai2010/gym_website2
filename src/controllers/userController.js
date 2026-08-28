@@ -2,7 +2,9 @@ const userRepository = require("../repositories/userRepository");
 const sessionRepository = require("../repositories/sessionRepository");
 const notificationRepository = require("../repositories/notificationRepository");
 const settingsRepository = require("../repositories/settingsRepository");
+const memberPortalRepository = require("../repositories/memberPortalRepository");
 const memberExportService = require("../services/memberExportService");
+const avatarService = require("../services/avatarService");
 const { assertSaudiPhone, assertStrongPassword, cleanString, pagination } = require("../utils/validator");
 const { createHttpError } = require("../utils/httpError");
 const { refreshTokenFromRequest } = require("../utils/cookies");
@@ -31,6 +33,21 @@ async function list(req, res) {
 async function detail(req, res) {
   const data = await userRepository.getUserDetails(req.params.id);
   res.json({ success: true, data });
+}
+
+async function memberAvatar(req, res) {
+  const memberId = Number.parseInt(req.params.id, 10);
+  if (!Number.isInteger(memberId) || memberId < 1) {
+    throw createHttpError(400, "Invalid member id.", "INVALID_ID");
+  }
+  const storedName = await memberPortalRepository.getAvatarPath(memberId);
+  const file = storedName ? await avatarService.readAvatar(storedName) : null;
+  if (!file) {
+    throw createHttpError(404, "No profile photo set.", "AVATAR_NOT_FOUND");
+  }
+  res.setHeader("Content-Type", file.mimeType);
+  res.setHeader("Cache-Control", "private, max-age=0, must-revalidate");
+  return res.send(file.buffer);
 }
 
 async function exportMembers(req, res) {
@@ -115,6 +132,7 @@ module.exports = {
   dashboard,
   detail,
   exportMembers,
+  memberAvatar,
   list,
   me,
   updateProfile

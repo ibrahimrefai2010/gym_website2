@@ -2,6 +2,7 @@ const memberPortalService = require("../services/memberPortalService");
 const memberPortalRepository = require("../repositories/memberPortalRepository");
 const notificationRepository = require("../repositories/notificationRepository");
 const sessionRepository = require("../repositories/sessionRepository");
+const avatarService = require("../services/avatarService");
 const { clearRefreshCookie, refreshTokenFromRequest } = require("../utils/cookies");
 const { assertSaudiPhone, cleanString, positiveInteger } = require("../utils/validator");
 const { createHttpError } = require("../utils/httpError");
@@ -114,6 +115,35 @@ async function updateEmergencyContact(req, res) {
   res.json({ success: true, data });
 }
 
+async function getAvatar(req, res) {
+  const storedName = await memberPortalRepository.getAvatarPath(req.user.id);
+  const file = storedName ? await avatarService.readAvatar(storedName) : null;
+  if (!file) {
+    throw createHttpError(404, "No profile photo set.", "AVATAR_NOT_FOUND");
+  }
+  res.setHeader("Content-Type", file.mimeType);
+  res.setHeader("Cache-Control", "private, max-age=0, must-revalidate");
+  return res.send(file.buffer);
+}
+
+async function uploadAvatar(req, res) {
+  const previous = await memberPortalRepository.getAvatarPath(req.user.id);
+  const saved = await avatarService.saveAvatar(req.user.id, req.body && req.body.image, previous);
+  await memberPortalRepository.setAvatarPath(req.user.id, saved.storedName);
+  await createLog("user", req.user.id, "member.avatar_update", "users", req.user.id, null, req.ip);
+  res.json({ success: true, data: { hasAvatar: true } });
+}
+
+async function deleteAvatar(req, res) {
+  const previous = await memberPortalRepository.getAvatarPath(req.user.id);
+  if (previous) {
+    await avatarService.removeAvatarFile(previous);
+    await memberPortalRepository.setAvatarPath(req.user.id, null);
+    await createLog("user", req.user.id, "member.avatar_remove", "users", req.user.id, null, req.ip);
+  }
+  res.json({ success: true, data: { hasAvatar: false } });
+}
+
 async function membership(req, res) {
   const data = await memberPortalService.getMembershipView(req.user.id);
   const memberSince = await memberPortalRepository.getMemberSince(req.user.id);
@@ -199,8 +229,11 @@ async function revokeOtherSessions(req, res) {
 module.exports = {
   card,
   dashboard,
+  deleteAvatar,
+  getAvatar,
   getNotificationPreferences,
   getProfile,
+  uploadAvatar,
   listSessions,
   markAllNotificationsRead,
   markNotificationRead,

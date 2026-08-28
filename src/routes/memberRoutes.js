@@ -9,6 +9,8 @@ router.get("/dashboard", asyncHandler(memberController.dashboard));
 router.get("/profile", asyncHandler(memberController.getProfile));
 router.patch("/profile", asyncHandler(memberController.updateProfile));
 router.put("/emergency-contact", asyncHandler(memberController.updateEmergencyContact));
+router.post("/avatar", asyncHandler(memberController.uploadAvatar));
+router.delete("/avatar", asyncHandler(memberController.deleteAvatar));
 
 router.get("/membership", asyncHandler(memberController.membership));
 router.get("/membership/history", asyncHandler(memberController.membershipHistory));

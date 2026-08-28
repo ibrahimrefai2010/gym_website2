@@ -2493,3 +2493,67 @@ html[dir="rtl"] .hero::after {
     gap: 2px;
   }
 }
+
+/* ---- Member avatar ---- */
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 72px;
+  block-size: 72px;
+  border-radius: 50%;
+  background: var(--color-black);
+  color: var(--color-gold);
+  font-size: 24px;
+  font-weight: 800;
+  overflow: hidden;
+  flex: 0 0 auto;
+  border: 2px solid var(--color-line);
+}
+
+.avatar img {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+}
+
+.avatar.avatar-sm {
+  inline-size: 44px;
+  block-size: 44px;
+  font-size: 16px;
+}
+
+.avatar-row {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-block-end: 4px;
+}
+
+.avatar-controls {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+
+.avatar-controls .btn {
+  cursor: pointer;
+}
+
+.visually-hidden-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.welcome-row {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}

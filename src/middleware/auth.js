@@ -1,5 +1,6 @@
-const { verifyAccessToken } = require("../utils/jwt");
+const { verifyAccessToken, verifyRefreshToken } = require("../utils/jwt");
 const { createHttpError } = require("../utils/httpError");
+const { refreshTokenFromRequest } = require("../utils/cookies");
 const rbacRepository = require("../repositories/rbacRepository");
 const adminRepository = require("../repositories/adminRepository");
 const userRepository = require("../repositories/userRepository");
@@ -28,6 +29,46 @@ async function authenticate(req, _res, next) {
       return next(createHttpError(401, "Session is no longer valid.", "SESSION_INVALID"));
     }
 
+    req.user = {
+      id: Number(payload.sub),
+      type: payload.type,
+      role: payload.type === "admin" ? principal.role : "member"
+    };
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+}
+
+// For GET requests that a plain <img>/<a> makes (no Authorization header can be
+// attached). Uses the Bearer token when present, otherwise the httpOnly refresh
+// cookie. Read-only surfaces only.
+async function authenticateMedia(req, _res, next) {
+  const header = req.get("authorization") || "";
+  if (header.startsWith("Bearer ")) {
+    return authenticate(req, _res, next);
+  }
+
+  const refreshToken = refreshTokenFromRequest(req);
+  if (!refreshToken) {
+    return next(createHttpError(401, "Authentication is required.", "AUTH_REQUIRED"));
+  }
+
+  let payload;
+  try {
+    payload = verifyRefreshToken(refreshToken);
+  } catch (_error) {
+    return next(createHttpError(401, "Session expired or invalid.", "AUTH_INVALID"));
+  }
+
+  try {
+    const principal =
+      payload.type === "admin"
+        ? await adminRepository.findById(payload.sub)
+        : await userRepository.findById(payload.sub);
+    if (!principal || principal.status !== "active") {
+      return next(createHttpError(401, "Session is no longer valid.", "SESSION_INVALID"));
+    }
     req.user = {
       id: Number(payload.sub),
       type: payload.type,
@@ -78,6 +119,7 @@ function requirePermission(permission) {
 
 module.exports = {
   authenticate,
+  authenticateMedia,
   requireAdmin,
   requirePermission,
   requireRole

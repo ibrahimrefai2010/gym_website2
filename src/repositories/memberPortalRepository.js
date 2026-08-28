@@ -25,7 +25,7 @@ async function getProfile(userId) {
       [userId]
     ),
     query(
-      `SELECT national_id, gender, birth_date, nationality, address, city, country
+      `SELECT national_id, gender, birth_date, nationality, address, city, country, avatar_path
        FROM customer_profiles
        WHERE user_id = ? AND deleted_at IS NULL
        LIMIT 1`,
@@ -64,6 +64,8 @@ async function getProfile(userId) {
     address: profile.address || "",
     city: profile.city || "",
     country: profile.country || "",
+    avatarPath: profile.avatar_path || null,
+    hasAvatar: Boolean(profile.avatar_path),
     emergencyContact: contact
       ? { id: contact.id, name: contact.name, phone: contact.phone, relationship: contact.relationship || "" }
       : null
@@ -169,6 +171,25 @@ async function upsertEmergencyContact(userId, payload) {
   }
 
   return getProfile(userId);
+}
+
+async function getAvatarPath(userId) {
+  ensureDatabase();
+  const rows = await query(
+    "SELECT avatar_path FROM customer_profiles WHERE user_id = ? AND deleted_at IS NULL LIMIT 1",
+    [userId]
+  );
+  return rows[0]?.avatar_path || null;
+}
+
+async function setAvatarPath(userId, storedName) {
+  ensureDatabase();
+  await query(
+    `INSERT INTO customer_profiles (user_id, avatar_path)
+     VALUES (?, ?)
+     ON DUPLICATE KEY UPDATE avatar_path = VALUES(avatar_path), updated_at = UTC_TIMESTAMP()`,
+    [userId, storedName]
+  );
 }
 
 async function getMembershipDetail(userId) {
@@ -394,8 +415,10 @@ async function getCardByToken(token) {
 }
 
 module.exports = {
+  getAvatarPath,
   getCardByToken,
   getMemberSince,
+  setAvatarPath,
   getMembershipDetail,
   getMembershipHistory,
   getPaymentReceipt,

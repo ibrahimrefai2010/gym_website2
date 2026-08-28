@@ -4,7 +4,7 @@
   }
 
   const en = {
-    "portal.nav.home": "Home",
+    "portal.nav.home": "Dashboard",
     "portal.nav.membership": "My Membership",
     "portal.nav.payments": "Payments",
     "portal.nav.notifications": "Notifications",
@@ -97,6 +97,11 @@
     "portal.account.security": "Security",
     "portal.emergency.hint": "Optional. Shared with gym staff only if needed.",
     "portal.emergency.none": "No emergency contact added.",
+    "portal.photo.upload": "Upload photo",
+    "portal.photo.remove": "Remove photo",
+    "portal.photo.hint": "JPEG, PNG or WebP, up to 2MB.",
+    "portal.photo.badType": "Choose a JPEG, PNG, or WebP image.",
+    "portal.photo.tooLarge": "The image must be 2MB or smaller.",
 
     "portal.security.changePassword": "Change password",
     "portal.security.forgot": "Forgot your password?",
@@ -148,7 +153,7 @@
   };
 
   const ar = {
-    "portal.nav.home": "الرئيسية",
+    "portal.nav.home": "لوحة العضو",
     "portal.nav.membership": "عضويتي",
     "portal.nav.payments": "المدفوعات",
     "portal.nav.notifications": "الإشعارات",
@@ -241,6 +246,11 @@
     "portal.account.security": "الأمان",
     "portal.emergency.hint": "اختياري. يُشارك مع موظفي النادي عند الحاجة فقط.",
     "portal.emergency.none": "لم تتم إضافة جهة اتصال للطوارئ.",
+    "portal.photo.upload": "رفع صورة",
+    "portal.photo.remove": "إزالة الصورة",
+    "portal.photo.hint": "JPEG أو PNG أو WebP، بحد أقصى 2 ميجابايت.",
+    "portal.photo.badType": "اختر صورة بصيغة JPEG أو PNG أو WebP.",
+    "portal.photo.tooLarge": "يجب أن يكون حجم الصورة 2 ميجابايت أو أقل.",
 
     "portal.security.changePassword": "تغيير كلمة المرور",
     "portal.security.forgot": "نسيت كلمة المرور؟",

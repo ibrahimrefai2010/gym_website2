@@ -96,6 +96,7 @@ function publicProfile(profile, { revealNationalId = false } = {}) {
     nationalId: revealNationalId ? profile.nationalId || null : undefined,
     nationalIdMasked: maskNationalId(profile.nationalId),
     hasNationalId: Boolean(profile.nationalId),
+    hasAvatar: Boolean(profile.hasAvatar),
     emergencyContact: profile.emergencyContact
   };
 }
@@ -135,7 +136,8 @@ async function getDashboard(userId) {
       memberCode: profile.memberCode,
       email: profile.email,
       phone: profile.phone,
-      registeredAt: profile.registeredAt
+      registeredAt: profile.registeredAt,
+      hasAvatar: Boolean(profile.hasAvatar)
     },
     membership: membershipView.membership,
     membershipState: membershipView.state,

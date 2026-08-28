@@ -5,6 +5,7 @@
     profile: null,
     activeTab: "home",
     loaded: {},
+    avatarV: 0,
     payments: { page: 1, pages: 1, receipts: {} },
     notifications: { page: 1, pages: 1, filter: "all" }
   };
@@ -110,6 +111,25 @@
     return `<div class="state-block" role="status">${escapeHtml(t("portal.loading"))}</div>`;
   }
 
+  function initials(name) {
+    const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) {
+      return "•";
+    }
+    return (parts[0][0] + (parts[1] ? parts[1][0] : "")).toUpperCase();
+  }
+
+  function renderAvatar(node, name, hasAvatar) {
+    if (!node) {
+      return;
+    }
+    if (hasAvatar) {
+      node.innerHTML = `<img src="/api/v1/user/avatar?t=${state.avatarV}" alt="">`;
+    } else {
+      node.textContent = initials(name);
+    }
+  }
+
   function errorBlock(retryHandlerName) {
     return `<div class="state-block is-error" role="alert">
       <span>${escapeHtml(t("portal.error"))}</span>
@@ -157,6 +177,11 @@
     const heading = byId("welcomeHeading");
     if (heading) {
       heading.textContent = t("portal.welcome", { name });
+    }
+    const welcomeAvatar = byId("welcomeAvatar");
+    if (welcomeAvatar) {
+      welcomeAvatar.hidden = false;
+      renderAvatar(welcomeAvatar, name, data.member?.hasAvatar);
     }
 
     renderMembershipSummary(byId("homeMembership"), {
@@ -640,6 +665,12 @@
     form.elements.nationality.value = profile.nationality || "";
     form.elements.city.value = profile.city || "";
 
+    renderAvatar(byId("pfAvatar"), profile.fullName, profile.hasAvatar);
+    const removeButton = byId("pfAvatarRemove");
+    if (removeButton) {
+      removeButton.hidden = !profile.hasAvatar;
+    }
+
     byId("personalReadonly").innerHTML = `
       <div><dt>${escapeHtml(t("portal.field.memberId"))}</dt><dd>${escapeHtml(profile.memberCode || "—")}</dd></div>
       <div><dt>${escapeHtml(t("portal.field.registered"))}</dt><dd>${escapeHtml(formatDate(profile.registeredAt))}</dd></div>`;
@@ -846,6 +877,72 @@
 
   function validatePhone(value) {
     return /^(05|5)\d{8}$/.test(String(value || "").replace(/[^\d]/g, "").replace(/^966/, ""));
+  }
+
+  function setupAvatar() {
+    const input = byId("pfAvatarInput");
+    const removeButton = byId("pfAvatarRemove");
+    const allowed = ["image/jpeg", "image/png", "image/webp"];
+
+    input?.addEventListener("change", async () => {
+      const file = input.files && input.files[0];
+      input.value = "";
+      if (!file) {
+        return;
+      }
+      if (!allowed.includes(file.type)) {
+        setMessage("avatarMessage", t("portal.photo.badType"), "error");
+        return;
+      }
+      if (file.size > 2 * 1024 * 1024) {
+        setMessage("avatarMessage", t("portal.photo.tooLarge"), "error");
+        return;
+      }
+      setMessage("avatarMessage", t("portal.loading"), "neutral");
+      try {
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(new Error("read failed"));
+          reader.readAsDataURL(file);
+        });
+        await api.request("/api/v1/user/avatar", {
+          method: "POST",
+          body: JSON.stringify({ image: dataUrl })
+        });
+        state.avatarV = Date.now();
+        await refreshAfterAvatarChange();
+        setMessage("avatarMessage", t("portal.saved"), "success");
+      } catch (error) {
+        setMessage("avatarMessage", error.message, "error");
+      }
+    });
+
+    removeButton?.addEventListener("click", async () => {
+      removeButton.disabled = true;
+      try {
+        await api.request("/api/v1/user/avatar", { method: "DELETE" });
+        state.avatarV = Date.now();
+        await refreshAfterAvatarChange();
+        setMessage("avatarMessage", t("portal.saved"), "success");
+      } catch (error) {
+        setMessage("avatarMessage", error.message, "error");
+      } finally {
+        removeButton.disabled = false;
+      }
+    });
+  }
+
+  async function refreshAfterAvatarChange() {
+    try {
+      const profile = await api.request("/api/v1/user/profile");
+      state.profile = profile;
+      fillPersonalForm(profile);
+    } catch (_error) {
+      /* keep current */
+    }
+    await refreshDashboardQuietly();
+    renderHome();
   }
 
   function setupPersonalForm() {
@@ -1172,6 +1269,7 @@
    * ------------------------------------------------------------------ */
   async function init() {
     setupEvents();
+    setupAvatar();
     setupPersonalForm();
     setupEmergencyForm();
     setupPasswordForm();
