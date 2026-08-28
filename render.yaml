@@ -1,0 +1,42 @@
+# Render.com blueprint for a THROWAWAY DEMO of the member portal.
+# One free container running MariaDB + Node. Data resets on every deploy/restart
+# and the service sleeps after ~15 min idle (first hit then takes ~1-2 min).
+# For real hosting, use ./Dockerfile with a managed database instead.
+services:
+  - type: web
+    name: muscle-fitness-demo
+    runtime: docker
+    dockerfilePath: ./Dockerfile.demo
+    plan: free
+    healthCheckPath: /api/v1/public/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
+      - key: DB_HOST
+        value: 127.0.0.1
+      - key: DB_PORT
+        value: "3306"
+      - key: DB_USER
+        value: root
+      - key: DB_PASSWORD
+        value: demo
+      - key: DB_NAME
+        value: muscle_fitness
+      - key: DEMO_MODE
+        value: "true"
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: ADMIN_REGISTRATION_SECRET
+        generateValue: true
+      - key: ADMIN_EMAIL
+        value: admin@demo.local
+      - key: ADMIN_PASSWORD
+        value: "Demo!Admin2026"
+      - key: ADMIN_FULL_NAME
+        value: Demo Admin
+      # BASE_URL / CORS_ORIGIN fall back to RENDER_EXTERNAL_URL automatically.

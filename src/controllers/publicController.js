@@ -1,6 +1,7 @@
 const publicRepository = require("../repositories/publicRepository");
 const memberPortalService = require("../services/memberPortalService");
 const { createHttpError } = require("../utils/httpError");
+const { env } = require("../config/env");
 
 async function bootstrap(_req, res) {
   const data = await publicRepository.getBootstrap();
@@ -13,6 +14,7 @@ async function health(_req, res) {
     data: {
     ok: true,
     service: "muscle-fitness",
+    demo: env.demoMode,
     timestamp: new Date().toISOString()
     }
   });

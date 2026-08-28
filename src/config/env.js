@@ -18,8 +18,16 @@ const env = {
   nodeEnv: process.env.NODE_ENV || "development",
   appName: "Muscle and Fitness Center",
   port: intEnv("PORT", intEnv("SERVER_PORT", 3000)),
-  baseUrl: process.env.BASE_URL || process.env.PUBLIC_BASE_URL || "http://localhost:3000",
-  corsOrigin: process.env.CORS_ORIGIN || "http://localhost:3000",
+  baseUrl:
+    process.env.BASE_URL ||
+    process.env.PUBLIC_BASE_URL ||
+    process.env.RENDER_EXTERNAL_URL ||
+    "http://localhost:3000",
+  corsOrigin:
+    process.env.CORS_ORIGIN ||
+    process.env.RENDER_EXTERNAL_URL ||
+    "http://localhost:3000",
+  demoMode: boolEnv("DEMO_MODE", false),
 
   databaseUrl: process.env.DATABASE_URL || "",
   dbHost: process.env.DB_HOST || "",
