@@ -36,6 +36,7 @@
           <button type="button" data-admin-tab="slider" data-i18n="admin.slider">السلايدر</button>
           <button type="button" data-admin-tab="contact" data-i18n="admin.contactInfo">معلومات التواصل</button>
           <button type="button" data-admin-tab="messages" data-i18n="admin.messages">الرسائل</button>
+          <button type="button" data-admin-tab="announce" data-i18n="admin.announce">الإشعارات والإعلانات</button>
           <button type="button" data-admin-tab="settings" data-i18n="admin.settings">الإعدادات</button>
           <button type="button" data-admin-tab="payments" data-i18n="admin.payments">المدفوعات</button>
           <button type="button" data-admin-tab="statistics" data-i18n="admin.statistics">الإحصائيات</button>
@@ -341,6 +342,59 @@
               <button class="btn small danger" type="button" data-message-detail-action="delete">حذف</button>
             </div>
             <p class="form-message" id="messageActionStatus" aria-live="polite"></p>
+          </div>
+        </section>
+
+        <section class="admin-section" data-admin-section="announce">
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.announce">الإشعارات والإعلانات</h2>
+            </div>
+            <p class="form-helper" data-i18n="admin.announceHint">تُرسل الرسالة كإشعار داخل بوابة العضو للجمهور المحدد.</p>
+            <form class="auth-form" id="announceForm" novalidate>
+              <div class="form-grid">
+                <div class="field">
+                  <label for="announceAudience" data-i18n="admin.announceAudience">الجمهور</label>
+                  <select id="announceAudience" name="audience">
+                    <option value="all" data-i18n="admin.audienceAll">كل الأعضاء</option>
+                    <option value="active" data-i18n="admin.audienceActive">الأعضاء النشطون</option>
+                    <option value="expiring" data-i18n="admin.audienceExpiring">عضويات على وشك الانتهاء</option>
+                    <option value="member" data-i18n="admin.audienceMember">عضو محدد</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="announceType" data-i18n="admin.announceType">النوع</label>
+                  <select id="announceType" name="type">
+                    <option value="announcement" data-i18n="admin.typeAnnouncement">إعلان</option>
+                    <option value="notice" data-i18n="admin.typeNotice">إشعار</option>
+                    <option value="promo" data-i18n="admin.typePromo">عرض ترويجي</option>
+                  </select>
+                </div>
+                <div class="field" id="announceMemberField" hidden>
+                  <label for="announceMemberId" data-i18n="admin.announceMemberId">رقم العضو (ID)</label>
+                  <input id="announceMemberId" name="userId" type="number" min="1" inputmode="numeric">
+                </div>
+              </div>
+              <div class="form-grid">
+                <div class="field"><label for="announceTitleAr" data-i18n="admin.titleAr">العنوان (عربي)</label><input id="announceTitleAr" name="titleAr" maxlength="200" required></div>
+                <div class="field"><label for="announceTitleEn" data-i18n="admin.titleEn">العنوان (إنجليزي)</label><input id="announceTitleEn" name="titleEn" maxlength="200" required></div>
+              </div>
+              <div class="field full"><label for="announceBodyAr" data-i18n="admin.bodyAr">الرسالة (عربي)</label><textarea id="announceBodyAr" name="bodyAr" rows="3" maxlength="2000" required></textarea></div>
+              <div class="field full"><label for="announceBodyEn" data-i18n="admin.bodyEn">الرسالة (إنجليزي)</label><textarea id="announceBodyEn" name="bodyEn" rows="3" maxlength="2000" required></textarea></div>
+              <button class="btn" type="submit" data-i18n="admin.announceSend">إرسال</button>
+              <p class="form-message" id="announceMessage" aria-live="polite"></p>
+            </form>
+          </div>
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.announceRecent">المرسلة مؤخراً</h2>
+            </div>
+            <div class="table-shell">
+              <table class="table">
+                <thead><tr><th data-i18n="admin.announceType">النوع</th><th data-i18n="admin.titleEn">العنوان</th><th data-i18n="admin.announceRecipients">المستلمون</th><th data-i18n="admin.announceRead">مقروءة</th><th data-i18n="table.date">التاريخ</th></tr></thead>
+                <tbody id="announceRows"></tbody>
+              </table>
+            </div>
           </div>
         </section>
 

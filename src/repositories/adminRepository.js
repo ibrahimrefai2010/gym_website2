@@ -180,6 +180,7 @@ async function listResource(resource) {
   if (resource === "roles") return rbacRepository.listRoles();
   if (resource === "permissions") return rbacRepository.listPermissions();
   if (resource === "adminRoleAssignments") return rbacRepository.listAdminRoleAssignments();
+  if (resource === "notificationBroadcasts") return listBroadcasts();
 
   const queries = {
     plans:
@@ -261,6 +262,96 @@ async function setAdminRoles(payload, adminId = null) {
   });
 }
 
+const BROADCAST_TYPES = ["announcement", "promo", "notice"];
+const BROADCAST_AUDIENCES = ["all", "active", "expiring", "member"];
+
+function cleanText(value, maxLength) {
+  return String(value == null ? "" : value)
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+async function broadcastNotification(payload = {}) {
+  ensureDatabase();
+  const type = BROADCAST_TYPES.includes(payload.type) ? payload.type : "announcement";
+  const audience = BROADCAST_AUDIENCES.includes(payload.audience) ? payload.audience : "all";
+  const titleEn = cleanText(payload.titleEn, 200);
+  const titleAr = cleanText(payload.titleAr, 200);
+  const bodyEn = cleanText(payload.bodyEn, 2000);
+  const bodyAr = cleanText(payload.bodyAr, 2000);
+
+  if (!titleEn || !titleAr || !bodyEn || !bodyAr) {
+    throw createHttpError(422, "Title and message are required in both languages.", "ANNOUNCEMENT_FIELDS_REQUIRED");
+  }
+
+  const values = [type, titleAr, titleEn, bodyAr, bodyEn];
+
+  if (audience === "member") {
+    const memberId = Number.parseInt(payload.userId ?? payload.memberId, 10);
+    if (!Number.isInteger(memberId) || memberId < 1) {
+      throw createHttpError(422, "Select a valid member.", "ANNOUNCEMENT_MEMBER_REQUIRED");
+    }
+    const exists = await query("SELECT id FROM users WHERE id = ? AND deleted_at IS NULL LIMIT 1", [memberId]);
+    if (!exists[0]) {
+      throw createHttpError(404, "Member not found.", "MEMBER_NOT_FOUND");
+    }
+    const result = await query(
+      `INSERT INTO notifications (user_id, type, title_ar, title_en, body_ar, body_en)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [memberId, ...values]
+    );
+    return { recipients: result.affectedRows || 1, audience, type };
+  }
+
+  let audienceSql = "u.deleted_at IS NULL AND u.status = 'active'";
+  if (audience === "active") {
+    audienceSql += ` AND EXISTS (
+      SELECT 1 FROM memberships m
+      WHERE m.user_id = u.id AND m.status = 'active' AND (m.end_date IS NULL OR m.end_date >= UTC_DATE())
+    )`;
+  } else if (audience === "expiring") {
+    audienceSql += ` AND EXISTS (
+      SELECT 1 FROM memberships m
+      WHERE m.user_id = u.id AND m.status = 'active'
+        AND m.end_date IS NOT NULL
+        AND m.end_date BETWEEN UTC_DATE() AND UTC_DATE() + INTERVAL 7 DAY
+    )`;
+  }
+
+  const result = await query(
+    `INSERT INTO notifications (user_id, type, title_ar, title_en, body_ar, body_en)
+     SELECT u.id, ?, ?, ?, ?, ?
+     FROM users u
+     WHERE ${audienceSql}`,
+    values
+  );
+  return { recipients: result.affectedRows || 0, audience, type };
+}
+
+async function listBroadcasts() {
+  ensureDatabase();
+  const rows = await query(
+    `SELECT type, title_en, title_ar,
+       COUNT(*) AS recipients,
+       SUM(is_read) AS read_count,
+       MAX(created_at) AS sent_at
+     FROM notifications
+     WHERE type IN ('announcement', 'promo', 'notice')
+     GROUP BY type, title_en, title_ar, DATE(created_at)
+     ORDER BY sent_at DESC
+     LIMIT 30`
+  );
+  return rows.map((row) => ({
+    type: row.type,
+    titleEn: row.title_en,
+    titleAr: row.title_ar,
+    recipients: Number(row.recipients || 0),
+    readCount: Number(row.read_count || 0),
+    sentAt: row.sent_at
+  }));
+}
+
 async function rbacCatalog() {
   return rbacRepository.getCatalog();
 }
@@ -270,10 +361,12 @@ async function syncRbacDefaults() {
 }
 
 module.exports = {
+  broadcastNotification,
   createAdmin,
   findById,
   findForLogin,
   getOverview,
+  listBroadcasts,
   listResource,
   publicAdmin,
   rbacCatalog,

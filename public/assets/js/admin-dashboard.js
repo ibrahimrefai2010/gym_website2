@@ -689,6 +689,7 @@
     renderHomepage();
     renderContact();
     renderMessages();
+    renderAnnouncements();
     renderPayments();
     renderAdminAccounts();
     renderRbac();
@@ -714,7 +715,7 @@
         window.location.href = "/login.html";
         return;
       }
-      const [overview, publicData, plans, offers, siteImagesData, slides, messages, rbac, reportSummary] = await Promise.all([
+      const [overview, publicData, plans, offers, siteImagesData, slides, messages, rbac, reportSummary, broadcasts] = await Promise.all([
         window.GymApi.request("/api/v1/admin/overview"),
         window.GymApi.bootstrap(),
         window.GymApi.request("/api/v1/admin/plans"),
@@ -723,8 +724,10 @@
         window.GymApi.request("/api/v1/admin/slides"),
         window.GymApi.request("/api/v1/messages"),
         window.GymApi.request("/api/v1/admin/rbac"),
-        window.GymApi.request("/api/v1/reports/summary").catch(() => null)
+        window.GymApi.request("/api/v1/reports/summary").catch(() => null),
+        window.GymApi.request("/api/v1/admin/notificationBroadcasts").catch(() => [])
       ]);
+      state.announcements = broadcasts || [];
       state.overview = overview;
       state.publicData = publicData;
       state.plans = plans;
@@ -1450,6 +1453,97 @@
       ?.addEventListener("click", (event) => run("pdf", event.currentTarget));
   }
 
+  function renderAnnouncements() {
+    const rows = state.announcements || [];
+    const typeLabels = {
+      announcement: t("admin.typeAnnouncement"),
+      notice: t("admin.typeNotice"),
+      promo: t("admin.typePromo")
+    };
+    setHtml(
+      "#announceRows",
+      rows.length
+        ? rows
+            .map(
+              (row) => `
+            <tr>
+              <td>${escapeHtml(typeLabels[row.type] || row.type)}</td>
+              <td>${escapeHtml(row.titleEn || row.titleAr || "")}</td>
+              <td>${escapeHtml(String(row.recipients))}</td>
+              <td>${escapeHtml(String(row.readCount))} / ${escapeHtml(String(row.recipients))}</td>
+              <td>${formatDate(row.sentAt)}</td>
+            </tr>`
+            )
+            .join("")
+        : `<tr><td colspan="5">${escapeHtml(t("admin.announceEmpty"))}</td></tr>`
+    );
+  }
+
+  async function loadAnnouncements() {
+    try {
+      state.announcements = await window.GymApi.request("/api/v1/admin/notificationBroadcasts");
+    } catch (_error) {
+      state.announcements = state.announcements || [];
+    }
+    renderAnnouncements();
+  }
+
+  function setupAnnounce() {
+    const form = document.querySelector("#announceForm");
+    const audience = document.querySelector("#announceAudience");
+    const memberField = document.querySelector("#announceMemberField");
+
+    const toggleMember = () => {
+      if (memberField) {
+        memberField.hidden = audience.value !== "member";
+      }
+    };
+    audience?.addEventListener("change", toggleMember);
+    toggleMember();
+
+    form?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const data = new FormData(form);
+      const payload = {
+        audience: data.get("audience"),
+        type: data.get("type"),
+        titleAr: String(data.get("titleAr") || "").trim(),
+        titleEn: String(data.get("titleEn") || "").trim(),
+        bodyAr: String(data.get("bodyAr") || "").trim(),
+        bodyEn: String(data.get("bodyEn") || "").trim()
+      };
+      if (payload.audience === "member") {
+        payload.userId = Number(data.get("userId"));
+      }
+      if (!payload.titleAr || !payload.titleEn || !payload.bodyAr || !payload.bodyEn) {
+        setMessage("#announceMessage", t("admin.announceIncomplete"), false);
+        return;
+      }
+
+      const submit = form.querySelector('button[type="submit"]');
+      submit.disabled = true;
+      setMessage("#announceMessage", "", true);
+      try {
+        const result = await window.GymApi.request("/api/v1/admin/notifications", {
+          method: "POST",
+          body: JSON.stringify(payload)
+        });
+        setMessage(
+          "#announceMessage",
+          t("admin.announceSent").replace("{n}", result.recipients),
+          true
+        );
+        form.reset();
+        toggleMember();
+        await loadAnnouncements();
+      } catch (error) {
+        setMessage("#announceMessage", error.message, false);
+      } finally {
+        submit.disabled = false;
+      }
+    });
+  }
+
   function setupSession() {
     document.querySelector("#adminLogout")?.addEventListener("click", async () => {
       try {
@@ -1481,6 +1575,7 @@
     setupMessageActions();
     setupRbacActions();
     setupExports();
+    setupAnnounce();
     setupSession();
     load();
     window.addEventListener("languagechange", renderAll);

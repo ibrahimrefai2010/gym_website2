@@ -9,6 +9,7 @@ const rbacRepository = require("../repositories/rbacRepository");
 
 const writePermissions = {
   plans: "plans:write",
+  notifications: "notifications:manage",
   offers: "offers:write",
   settings: "settings:write",
   siteImages: "settings:write",
@@ -22,6 +23,7 @@ const writePermissions = {
 const readPermissions = {
   adminAccounts: "roles:manage",
   adminRoleAssignments: "roles:manage",
+  notificationBroadcasts: "notifications:manage",
   logs: "audit_logs:read",
   memberships: "memberships:read",
   messages: "messages:write",
@@ -107,6 +109,17 @@ async function save(req, res) {
   } else if (resource === "adminRoleAssignments") {
     data = await adminRepository.setAdminRoles(req.body, req.user?.id);
     await createLog("admin", req.user?.id, "admin.roles.update", "admin_users", data.adminId, { roleKeys: data.roleKeys }, req.ip);
+  } else if (resource === "notifications") {
+    data = await adminRepository.broadcastNotification(req.body);
+    await createLog(
+      "admin",
+      req.user?.id,
+      "notification.broadcast",
+      "notifications",
+      null,
+      { audience: data.audience, type: data.type, recipients: data.recipients },
+      req.ip
+    );
   } else {
     throw createHttpError(404, "This resource does not support writes yet.", "WRITE_NOT_SUPPORTED");
   }
