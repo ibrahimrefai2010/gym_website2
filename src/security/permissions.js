@@ -1,0 +1,223 @@
+const PERMISSIONS = [
+  { key: "dashboard:read", category: "Dashboard", description: "View executive dashboard and operational widgets." },
+  { key: "users:read", category: "Customers", description: "View customer and member records." },
+  { key: "users:update", category: "Customers", description: "Update customer and member records." },
+  { key: "customers:manage", category: "Customers", description: "Create, update, tag, search, filter, and export customers." },
+  { key: "memberships:read", category: "Memberships", description: "View memberships and membership history." },
+  { key: "memberships:write", category: "Memberships", description: "Create, renew, upgrade, downgrade, transfer, freeze, extend, and cancel memberships." },
+  { key: "memberships:freeze", category: "Memberships", description: "Freeze individual or global memberships." },
+  { key: "plans:write", category: "Memberships", description: "Manage membership packages and pricing." },
+  { key: "invoices:read", category: "Finance", description: "View invoices and invoice history." },
+  { key: "invoices:write", category: "Finance", description: "Create, update, cancel, print, email, and export invoices." },
+  { key: "payments:read", category: "Finance", description: "View payments and transactions." },
+  { key: "payments:write", category: "Finance", description: "Create, complete, split, and reconcile payments." },
+  { key: "payments:refund", category: "Finance", description: "Issue and approve refunds." },
+  { key: "expenses:manage", category: "Finance", description: "Manage expenses, categories, attachments, and approvals." },
+  { key: "cash_register:manage", category: "Finance", description: "Open and close cash drawers and end-of-day reports." },
+  { key: "reports:read", category: "Reports", description: "View operational and financial reports." },
+  { key: "reports:export", category: "Reports", description: "Export reports to PDF, Excel, CSV, print, or email." },
+  { key: "settings:write", category: "Settings", description: "Manage system settings." },
+  { key: "roles:manage", category: "Security", description: "Manage roles and admin role assignments." },
+  { key: "permissions:manage", category: "Security", description: "Manage permission catalog and role permissions." },
+  { key: "backups:read", category: "Backups", description: "View backup history." },
+  { key: "backups:write", category: "Backups", description: "Create, schedule, download, and restore backups." },
+  { key: "audit_logs:read", category: "Security", description: "View and export audit logs." },
+  { key: "branches:manage", category: "Operations", description: "Manage branches, branch filters, and branch assignments." },
+  { key: "documents:manage", category: "Files", description: "Manage secure document metadata, downloads, previews, and permissions." },
+  { key: "api_keys:manage", category: "Integrations", description: "Manage API keys." },
+  { key: "integrations:manage", category: "Integrations", description: "Manage third-party integrations and payment gateways." },
+  { key: "website:manage", category: "Website", description: "Manage public website configuration." },
+  { key: "cms:manage", category: "Website", description: "Manage CMS pages, sections, FAQ, blog, terms, and privacy content." },
+  { key: "banners:manage", category: "Website", description: "Manage banners." },
+  { key: "sliders:manage", category: "Website", description: "Manage homepage sliders." },
+  { key: "seo:manage", category: "Website", description: "Manage SEO, metadata, analytics, and social links." },
+  { key: "offers:write", category: "Marketing", description: "Manage offers and promotions." },
+  { key: "discounts:manage", category: "Marketing", description: "Manage discounts." },
+  { key: "coupons:manage", category: "Marketing", description: "Manage coupons." },
+  { key: "notifications:manage", category: "Notifications", description: "Manage in-app, email, SMS, WhatsApp, and push notifications." },
+  { key: "messages:write", category: "Notifications", description: "Read, update, and archive contact messages." },
+  { key: "trainers:manage", category: "Operations", description: "Manage trainers, schedules, ratings, and assigned members." },
+  { key: "employees:manage", category: "Operations", description: "Manage employee profiles, documents, leaves, salary, commission, and performance." },
+  { key: "attendance:manage", category: "Operations", description: "Manage attendance and QR check-ins." },
+  { key: "qr:manage", category: "Operations", description: "Manage QR codes." },
+  { key: "pool:manage", category: "Operations", description: "Manage swimming pool memberships, classes, coaches, schedules, bookings, and capacity." },
+  { key: "equipment:manage", category: "Operations", description: "Manage equipment, maintenance, repairs, warranty, and replacement alerts." },
+  { key: "store:manage", category: "Store", description: "Manage store operations." },
+  { key: "products:manage", category: "Store", description: "Manage products and inventory." },
+  { key: "ai:manage", category: "AI", description: "Manage AI settings and AI-assisted actions." }
+];
+
+const ALL_PERMISSION_KEYS = PERMISSIONS.map((permission) => permission.key);
+
+const ROLES = [
+  { key: "owner", displayName: "Owner", description: "Business owner with complete platform access.", isSystem: true },
+  { key: "super_admin", displayName: "Super Admin", description: "System administrator with complete platform access.", isSystem: true },
+  { key: "admin", displayName: "Admin", description: "Legacy administrator role with complete platform access.", isSystem: true },
+  { key: "general_manager", displayName: "General Manager", description: "Runs business operations across branches.", isSystem: true },
+  { key: "manager", displayName: "Manager", description: "Legacy manager role mapped to branch operations.", isSystem: true },
+  { key: "branch_manager", displayName: "Branch Manager", description: "Runs daily branch operations.", isSystem: true },
+  { key: "reception", displayName: "Reception", description: "Handles front-desk customer, membership, attendance, and payment workflows.", isSystem: true },
+  { key: "accountant", displayName: "Accountant", description: "Handles finance, invoices, payments, refunds, expenses, and reports.", isSystem: true },
+  { key: "trainer", displayName: "Trainer", description: "Manages assigned member training and attendance views.", isSystem: true },
+  { key: "marketing", displayName: "Marketing", description: "Manages campaigns, CMS, offers, SEO, and notifications.", isSystem: true },
+  { key: "customer_support", displayName: "Customer Support", description: "Handles customer questions, messages, and membership support.", isSystem: true },
+  { key: "maintenance", displayName: "Maintenance", description: "Handles equipment, pool, and facility maintenance workflows.", isSystem: true },
+  { key: "developer", displayName: "Developer", description: "Manages technical settings, integrations, logs, and API keys.", isSystem: true },
+  { key: "staff", displayName: "Staff", description: "Legacy staff role with limited front-desk access.", isSystem: true }
+];
+
+const ownerPermissions = ["*"];
+const businessManagerPermissions = [
+  "dashboard:read",
+  "users:read",
+  "users:update",
+  "customers:manage",
+  "memberships:read",
+  "memberships:write",
+  "memberships:freeze",
+  "plans:write",
+  "invoices:read",
+  "invoices:write",
+  "payments:read",
+  "payments:write",
+  "expenses:manage",
+  "cash_register:manage",
+  "reports:read",
+  "reports:export",
+  "branches:manage",
+  "documents:manage",
+  "website:manage",
+  "cms:manage",
+  "banners:manage",
+  "sliders:manage",
+  "seo:manage",
+  "offers:write",
+  "discounts:manage",
+  "coupons:manage",
+  "notifications:manage",
+  "messages:write",
+  "trainers:manage",
+  "employees:manage",
+  "branches:manage",
+  "attendance:manage",
+  "qr:manage",
+  "pool:manage",
+  "equipment:manage",
+  "store:manage",
+  "products:manage"
+];
+
+const branchManagerPermissions = [
+  "dashboard:read",
+  "users:read",
+  "users:update",
+  "customers:manage",
+  "memberships:read",
+  "memberships:write",
+  "memberships:freeze",
+  "plans:write",
+  "invoices:read",
+  "invoices:write",
+  "payments:read",
+  "payments:write",
+  "cash_register:manage",
+  "reports:read",
+  "reports:export",
+  "messages:write",
+  "trainers:manage",
+  "employees:manage",
+  "attendance:manage",
+  "qr:manage",
+  "pool:manage",
+  "equipment:manage"
+];
+
+const DEFAULT_ROLE_PERMISSIONS = {
+  owner: ownerPermissions,
+  super_admin: ownerPermissions,
+  admin: ownerPermissions,
+  developer: ownerPermissions,
+  general_manager: businessManagerPermissions,
+  manager: branchManagerPermissions,
+  branch_manager: branchManagerPermissions,
+  reception: [
+    "dashboard:read",
+    "users:read",
+    "users:update",
+    "customers:manage",
+    "memberships:read",
+    "memberships:write",
+    "invoices:read",
+    "invoices:write",
+    "payments:read",
+    "payments:write",
+    "cash_register:manage",
+    "attendance:manage",
+    "qr:manage",
+    "messages:write",
+    "documents:manage"
+  ],
+  accountant: [
+    "dashboard:read",
+    "users:read",
+    "memberships:read",
+    "invoices:read",
+    "invoices:write",
+    "payments:read",
+    "payments:write",
+    "payments:refund",
+    "expenses:manage",
+    "cash_register:manage",
+    "reports:read",
+    "reports:export"
+  ],
+  trainer: ["users:read", "customers:manage", "memberships:read", "attendance:manage", "trainers:manage"],
+  marketing: [
+    "website:manage",
+    "cms:manage",
+    "banners:manage",
+    "sliders:manage",
+    "seo:manage",
+    "offers:write",
+    "discounts:manage",
+    "coupons:manage",
+    "notifications:manage",
+    "messages:write",
+    "reports:read"
+  ],
+  customer_support: [
+    "users:read",
+    "users:update",
+    "customers:manage",
+    "memberships:read",
+    "messages:write",
+    "notifications:manage",
+    "documents:manage"
+  ],
+  maintenance: ["dashboard:read", "pool:manage", "equipment:manage"],
+  staff: ["users:read", "messages:write", "payments:read"]
+};
+
+function normalizeRoleKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function expandPermissionKeys(keys) {
+  if (keys.includes("*")) {
+    return ALL_PERMISSION_KEYS;
+  }
+  return keys.filter((key) => ALL_PERMISSION_KEYS.includes(key));
+}
+
+module.exports = {
+  ALL_PERMISSION_KEYS,
+  DEFAULT_ROLE_PERMISSIONS,
+  PERMISSIONS,
+  ROLES,
+  expandPermissionKeys,
+  normalizeRoleKey
+};

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Secure member and admin login.">
+    <meta name="theme-color" content="#080808">
+    <title>Muscle and Fitness Center | Login</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    >
+    <link rel="stylesheet" href="/assets/css/styles.css?v=2.1.0">
+  </head>
+  <body class="auth-page">
+    <a class="skip-link" href="#loginForm" data-i18n="skip">Skip to content</a>
+    <main class="auth-shell">
+      <section class="auth-art" aria-label="Login">
+        <picture data-site-picture="authHero">
+          <source srcset="/assets/images/hero-gym.webp" type="image/webp">
+          <img src="/assets/images/hero-gym.png" alt="">
+        </picture>
+        <div class="auth-art-content">
+          <h1 data-i18n="auth.title">Welcome back.</h1>
+          <p data-i18n="auth.body">Access your membership, renewals, and account information securely.</p>
+        </div>
+      </section>
+
+      <section class="auth-card">
+        <div class="auth-topline">
+          <a class="btn ghost small" href="/" data-i18n="auth.back">Back to site</a>
+          <div class="language-switch" aria-label="Language">
+            <button type="button" data-lang-toggle="en" aria-pressed="true">EN</button>
+            <button type="button" data-lang-toggle="ar" aria-pressed="false">ع</button>
+          </div>
+        </div>
+
+        <div>
+          <p class="eyebrow" data-i18n="nav.login">Login</p>
+          <h2 id="authHeading" data-i18n="auth.title">Welcome back.</h2>
+        </div>
+
+        <div class="auth-tabs" role="tablist" aria-label="Account access">
+          <button class="is-active" type="button" role="tab" aria-selected="true" data-auth-mode="login" data-i18n="auth.signInTab">Sign in</button>
+          <button type="button" role="tab" aria-selected="false" data-auth-mode="register" data-i18n="auth.createTab">Create account</button>
+        </div>
+
+        <form class="auth-form" id="loginForm" data-auth-panel="login" novalidate>
+          <div class="field">
+            <label for="identifier" data-i18n="field.emailPhone">Email or phone</label>
+            <input id="identifier" name="identifier" type="text" autocomplete="username" required>
+          </div>
+          <div class="field">
+            <label for="password" data-i18n="field.password">Password</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" required>
+          </div>
+          <button class="btn full" type="submit" data-i18n="auth.submit">Sign in</button>
+          <button class="btn ghost full" type="button" id="forgotPassword" data-i18n="auth.forgot">Forgot password</button>
+        </form>
+
+        <form class="auth-form is-hidden" id="registerForm" data-auth-panel="register" novalidate>
+          <div class="field">
+            <label for="registerFullName" data-i18n="field.name">Full name</label>
+            <input id="registerFullName" name="fullName" type="text" autocomplete="name" required>
+          </div>
+          <div class="field">
+            <label for="registerEmail" data-i18n="field.email">Email</label>
+            <input id="registerEmail" name="email" type="email" autocomplete="email" required>
+          </div>
+          <div class="field">
+            <label for="registerPhone" data-i18n="field.phone">Phone</label>
+            <input id="registerPhone" name="phone" type="tel" autocomplete="tel" placeholder="05xxxxxxxx" required>
+          </div>
+          <div class="field">
+            <label for="registerPassword" data-i18n="field.password">Password</label>
+            <input id="registerPassword" name="password" type="password" autocomplete="new-password" required>
+          </div>
+          <p class="form-helper" data-i18n="auth.passwordHint">Use at least 8 characters with one uppercase letter, one number, and one special character.</p>
+          <button class="btn full" type="submit" data-i18n="auth.createAccount">Create account</button>
+        </form>
+
+        <p class="form-message" id="authMessage" aria-live="polite"></p>
+      </section>
+    </main>
+
+    <script src="/assets/js/data.js"></script>
+    <script src="/assets/js/i18n.js"></script>
+    <script src="/assets/js/ux-copy.js"></script>
+    <script src="/assets/js/api.js"></script>
+    <script src="/assets/js/auth-page.js?v=2.1.0"></script>
+  </body>
+</html>

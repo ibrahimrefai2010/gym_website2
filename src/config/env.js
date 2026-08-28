@@ -1,0 +1,73 @@
+const dotenv = require("dotenv");
+
+dotenv.config();
+
+function intEnv(key, fallback) {
+  const value = Number(process.env[key]);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function boolEnv(key, fallback = false) {
+  if (process.env[key] === undefined) {
+    return fallback;
+  }
+  return String(process.env[key]).toLowerCase() === "true";
+}
+
+const env = {
+  nodeEnv: process.env.NODE_ENV || "development",
+  appName: "Muscle and Fitness Center",
+  port: intEnv("PORT", intEnv("SERVER_PORT", 3000)),
+  baseUrl: process.env.BASE_URL || process.env.PUBLIC_BASE_URL || "http://localhost:3000",
+  corsOrigin: process.env.CORS_ORIGIN || "http://localhost:3000",
+
+  databaseUrl: process.env.DATABASE_URL || "",
+  dbHost: process.env.DB_HOST || "",
+  dbPort: intEnv("DB_PORT", 3306),
+  dbUser: process.env.DB_USER || "",
+  dbPassword: process.env.DB_PASSWORD || "",
+  dbName: process.env.DB_NAME || "",
+
+  jwtAccessSecret: process.env.JWT_ACCESS_SECRET || "development-access-secret-change-me",
+  jwtRefreshSecret: process.env.JWT_REFRESH_SECRET || "development-refresh-secret-change-me",
+  jwtAccessExpiry: process.env.JWT_ACCESS_EXPIRY || "15m",
+  jwtRefreshExpiry: process.env.JWT_REFRESH_EXPIRY || "7d",
+  bcryptRounds: intEnv("BCRYPT_ROUNDS", 12),
+
+  smtpHost: process.env.SMTP_HOST || "",
+  smtpPort: intEnv("SMTP_PORT", 587),
+  smtpSecure: boolEnv("SMTP_SECURE", false),
+  smtpUser: process.env.SMTP_USER || "",
+  smtpPass: process.env.SMTP_PASS || "",
+  emailFrom:
+    process.env.EMAIL_FROM || '"Muscle and Fitness Center" <noreply@localhost>',
+  otpExpiryMinutes: intEnv("OTP_EXPIRY_MINUTES", 15),
+
+  rateLimitLogin: intEnv("RATE_LIMIT_LOGIN", 10),
+  rateLimitRegister: intEnv("RATE_LIMIT_REGISTER", 5),
+  rateLimitOtp: intEnv("RATE_LIMIT_OTP", 3),
+  adminRegistrationSecret: process.env.ADMIN_REGISTRATION_SECRET || "",
+
+  currency: "SAR",
+  timezone: "Asia/Riyadh",
+
+  stripeSecretKey: process.env.STRIPE_SECRET_KEY || "",
+  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || "",
+  stripeSuccessUrl:
+    process.env.STRIPE_SUCCESS_URL || "http://localhost:3000/user.html?payment=success",
+  stripeCancelUrl:
+    process.env.STRIPE_CANCEL_URL || "http://localhost:3000/user.html?payment=cancelled"
+};
+
+if (env.nodeEnv === "production") {
+  const missing = [];
+  if (!process.env.JWT_ACCESS_SECRET) missing.push("JWT_ACCESS_SECRET");
+  if (!process.env.JWT_REFRESH_SECRET) missing.push("JWT_REFRESH_SECRET");
+  if (!env.adminRegistrationSecret) missing.push("ADMIN_REGISTRATION_SECRET");
+  if (!env.corsOrigin) missing.push("CORS_ORIGIN");
+  if (missing.length > 0) {
+    throw new Error(`Missing required production variables: ${missing.join(", ")}`);
+  }
+}
+
+module.exports = { env };

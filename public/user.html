@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Member portal for membership, payments, digital card, notifications, and account.">
+    <meta name="theme-color" content="#f7f4ee">
+    <meta name="robots" content="noindex">
+    <title>Muscle and Fitness Center | Member Portal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    >
+    <link rel="stylesheet" href="/assets/css/styles.css?v=2.1.0">
+  </head>
+  <body class="panel-page">
+    <a class="skip-link" href="#main" data-i18n="skip">Skip to content</a>
+    <header class="site-header light">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="/">
+          <img class="brand-logo" src="/assets/logo.png" alt="" width="40" height="40" data-site-image="logo">
+          <span data-brand-name></span>
+        </a>
+        <div class="nav-panel" id="siteNav">
+          <a class="nav-link" href="/" data-i18n="nav.home">Home</a>
+          <a class="nav-link" href="/user.html" aria-current="page" data-i18n="nav.account">Account</a>
+          <a class="nav-link" href="/admin.html" id="adminLink" hidden data-i18n="nav.admin">Admin</a>
+        </div>
+        <div class="nav-actions">
+          <div class="language-switch" aria-label="Language">
+            <button type="button" data-lang-toggle="en" aria-pressed="true">EN</button>
+            <button type="button" data-lang-toggle="ar" aria-pressed="false">ع</button>
+          </div>
+          <button class="btn small ghost" type="button" id="logoutButton" data-i18n="nav.logout">Logout</button>
+        </div>
+        <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="siteNav">
+          <span aria-hidden="true"></span>
+        </button>
+      </nav>
+    </header>
+
+    <main class="container portal-shell" id="main">
+      <div class="portal-head">
+        <p class="eyebrow" data-i18n="portal.title">Member portal</p>
+        <h1 id="welcomeHeading" data-i18n="portal.title">Member portal</h1>
+        <p data-i18n="portal.body">Manage your membership, payments, notifications, and account in one place.</p>
+      </div>
+
+      <nav class="portal-nav" id="portalNav" aria-label="Member sections">
+        <button type="button" data-portal-tab="home" class="is-active" aria-current="page" data-i18n="portal.nav.home">Home</button>
+        <button type="button" data-portal-tab="membership" data-i18n="portal.nav.membership">My Membership</button>
+        <button type="button" data-portal-tab="payments" data-i18n="portal.nav.payments">Payments</button>
+        <button type="button" data-portal-tab="notifications">
+          <span data-i18n="portal.nav.notifications">Notifications</span>
+          <span class="nav-count" id="navUnread" hidden>0</span>
+        </button>
+        <button type="button" data-portal-tab="account" data-i18n="portal.nav.account">Account</button>
+      </nav>
+
+      <!-- HOME -->
+      <section class="portal-section" id="section-home" aria-labelledby="welcomeHeading">
+        <div class="portal-grid">
+          <article class="panel">
+            <p class="portal-section-title" data-i18n="portal.membership.summary">Membership summary</p>
+            <div id="homeMembership" aria-live="polite"></div>
+          </article>
+          <article class="panel">
+            <p class="portal-section-title" data-i18n="portal.card.title">Digital membership card</p>
+            <div id="homeCard" aria-live="polite"></div>
+          </article>
+        </div>
+        <article class="panel">
+          <p class="portal-section-title" data-i18n="portal.notif.title">Notifications</p>
+          <div id="homeNotifications" aria-live="polite"></div>
+        </article>
+      </section>
+
+      <!-- MY MEMBERSHIP -->
+      <section class="portal-section" id="section-membership" aria-label="My Membership" hidden>
+        <article class="panel">
+          <p class="portal-section-title" data-i18n="portal.membership.current">Current membership</p>
+          <div id="membershipCurrent" aria-live="polite"></div>
+        </article>
+        <article class="panel">
+          <p class="portal-section-title" data-i18n="portal.membership.history">Membership history</p>
+          <div id="membershipHistory" aria-live="polite"></div>
+        </article>
+      </section>
+
+      <!-- PAYMENTS -->
+      <section class="portal-section" id="section-payments" aria-label="Payments" hidden>
+        <article class="panel">
+          <p class="portal-section-title" data-i18n="portal.payments.title">Payment history</p>
+          <div id="paymentsBody" aria-live="polite"></div>
+        </article>
+      </section>
+
+      <!-- NOTIFICATIONS -->
+      <section class="portal-section" id="section-notifications" aria-label="Notifications" hidden>
+        <article class="panel">
+          <div class="notif-item-head">
+            <p class="portal-section-title" style="margin:0" data-i18n="portal.notif.title">Notifications</p>
+            <div class="inline-actions">
+              <div class="auth-tabs" role="tablist" aria-label="Filter notifications" style="display:inline-grid">
+                <button type="button" class="is-active" data-notif-filter="all" data-i18n="portal.notif.all">All</button>
+                <button type="button" data-notif-filter="unread" data-i18n="portal.notif.unread">Unread</button>
+              </div>
+              <button class="btn small ghost" type="button" id="markAllRead" data-i18n="portal.notif.markAll">Mark all as read</button>
+            </div>
+          </div>
+          <div id="notificationsBody" aria-live="polite"></div>
+        </article>
+        <article class="panel">
+          <p class="portal-section-title" data-i18n="portal.notif.prefs">Notification preferences</p>
+          <p class="field-hint" data-i18n="portal.notif.prefsNote">Essential account and membership messages are always sent.</p>
+          <form id="prefsForm" novalidate>
+            <div class="toggle-row">
+              <span class="toggle-copy">
+                <strong data-i18n="portal.notif.inapp">In-app notifications</strong>
+                <small data-i18n="portal.notif.inappNote">Always on for important account updates.</small>
+              </span>
+              <input type="checkbox" checked disabled aria-disabled="true">
+            </div>
+            <div class="toggle-row">
+              <span class="toggle-copy"><strong data-i18n="portal.notif.emailTx">Email — account &amp; membership</strong></span>
+              <input type="checkbox" name="emailTransactional">
+            </div>
+            <div class="toggle-row">
+              <span class="toggle-copy"><strong data-i18n="portal.notif.smsTx">SMS — account &amp; membership</strong></span>
+              <input type="checkbox" name="smsTransactional">
+            </div>
+            <div class="toggle-row">
+              <span class="toggle-copy"><strong data-i18n="portal.notif.emailMk">Email — offers &amp; news</strong></span>
+              <input type="checkbox" name="emailMarketing">
+            </div>
+            <div class="toggle-row">
+              <span class="toggle-copy"><strong data-i18n="portal.notif.smsMk">SMS — offers &amp; news</strong></span>
+              <input type="checkbox" name="smsMarketing">
+            </div>
+            <div class="toggle-row">
+              <span class="toggle-copy"><strong data-i18n="portal.notif.waMk">WhatsApp — offers &amp; news</strong></span>
+              <input type="checkbox" name="whatsappMarketing">
+            </div>
+            <button class="btn" type="submit" data-i18n="form.save">Save changes</button>
+            <p class="form-message" id="prefsMessage" aria-live="polite"></p>
+          </form>
+        </article>
+      </section>
+
+      <!-- ACCOUNT -->
+      <section class="portal-section" id="section-account" aria-label="Account" hidden>
+        <article class="panel">
+          <p class="portal-section-title" data-i18n="portal.account.personal">Personal information</p>
+          <form class="auth-form" id="personalForm" novalidate>
+            <div class="field">
+              <label for="pfFullName" data-i18n="field.name">Full name</label>
+              <input id="pfFullName" name="fullName" type="text" autocomplete="name" required>
+              <span class="field-error"></span>
+            </div>
+            <div class="field">
+              <label for="pfEmail" data-i18n="field.email">Email</label>
+              <input id="pfEmail" name="email" type="email" autocomplete="email" readonly>
+            </div>
+            <div class="field">
+              <label for="pfPhone" data-i18n="field.phone">Phone</label>
+              <input id="pfPhone" name="phone" type="tel" autocomplete="tel" inputmode="tel" placeholder="05xxxxxxxx">
+              <span class="field-error"></span>
+            </div>
+            <div class="field">
+              <label for="pfNationalId" data-i18n="portal.field.nationalId">National ID / Iqama</label>
+              <input id="pfNationalId" name="nationalId" type="text" inputmode="numeric" autocomplete="off">
+              <p class="field-hint" data-i18n="portal.field.nationalIdHint">Optional. Stored securely and shown masked.</p>
+              <span class="field-error"></span>
+            </div>
+            <div class="field">
+              <label for="pfBirthDate" data-i18n="portal.field.dob">Date of birth</label>
+              <input id="pfBirthDate" name="birthDate" type="date">
+              <span class="field-error"></span>
+            </div>
+            <div class="field">
+              <label for="pfGender" data-i18n="portal.field.gender">Gender</label>
+              <select id="pfGender" name="gender">
+                <option value="unspecified" data-i18n="option.unspecified">Prefer not to say</option>
+                <option value="male" data-i18n="option.male">Male</option>
+                <option value="female" data-i18n="option.female">Female</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="pfNationality" data-i18n="portal.field.nationality">Nationality</label>
+              <input id="pfNationality" name="nationality" type="text" autocomplete="off">
+            </div>
+            <div class="field">
+              <label for="pfCity" data-i18n="portal.field.city">City</label>
+              <input id="pfCity" name="city" type="text" autocomplete="address-level2">
+            </div>
+            <dl class="data-list" id="personalReadonly"></dl>
+            <button class="btn" type="submit" data-i18n="form.save">Save changes</button>
+            <p class="form-message" id="personalMessage" aria-live="polite"></p>
+          </form>
+        </article>
+
+        <article class="panel">
+          <p class="portal-section-title" data-i18n="portal.account.emergency">Emergency contact</p>
+          <p class="field-hint" data-i18n="portal.emergency.hint">Optional. Shared with gym staff only if needed.</p>
+          <form class="auth-form" id="emergencyForm" novalidate>
+            <div class="field">
+              <label for="ecName" data-i18n="field.name">Full name</label>
+              <input id="ecName" name="name" type="text" autocomplete="name">
+            </div>
+            <div class="field">
+              <label for="ecRelationship" data-i18n="portal.field.relationship">Relationship</label>
+              <input id="ecRelationship" name="relationship" type="text">
+            </div>
+            <div class="field">
+              <label for="ecPhone" data-i18n="field.phone">Phone</label>
+              <input id="ecPhone" name="phone" type="tel" inputmode="tel">
+            </div>
+            <button class="btn" type="submit" data-i18n="form.save">Save changes</button>
+            <p class="form-message" id="emergencyMessage" aria-live="polite"></p>
+          </form>
+        </article>
+
+        <article class="panel">
+          <p class="portal-section-title" data-i18n="portal.account.contactGym">Contact the gym</p>
+          <dl class="data-list" id="gymContact"></dl>
+        </article>
+
+        <article class="panel">
+          <p class="portal-section-title" data-i18n="portal.account.security">Security</p>
+          <form class="auth-form" id="passwordForm" novalidate>
+            <div class="field">
+              <label for="currentPassword" data-i18n="field.currentPassword">Current password</label>
+              <input id="currentPassword" name="currentPassword" type="password" autocomplete="current-password" required>
+              <span class="field-error"></span>
+            </div>
+            <div class="field">
+              <label for="nextPassword" data-i18n="field.nextPassword">New password</label>
+              <input id="nextPassword" name="nextPassword" type="password" autocomplete="new-password" minlength="8" required>
+              <p class="field-hint" data-i18n="auth.passwordHint">Use at least 8 characters with one uppercase letter, one number, and one special character.</p>
+              <span class="field-error"></span>
+            </div>
+            <button class="btn" type="submit" data-i18n="portal.security.changePassword">Change password</button>
+            <a class="link-button" href="/reset-password.html" data-i18n="portal.security.forgot">Forgot your password?</a>
+            <p class="form-message" id="passwordMessage" aria-live="polite"></p>
+          </form>
+
+          <div>
+            <p class="portal-section-title" data-i18n="portal.security.sessions">Active sessions</p>
+            <div id="sessionsBody" aria-live="polite"></div>
+            <div class="inline-actions" style="margin-block-start:12px">
+              <button class="btn small secondary" type="button" id="revokeOthers" data-i18n="portal.security.revokeOthers">Sign out other devices</button>
+              <button class="btn small ghost" type="button" id="logoutButton2" data-i18n="nav.logout">Logout</button>
+            </div>
+            <p class="form-message" id="sessionsMessage" aria-live="polite"></p>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <script src="/assets/js/data.js"></script>
+    <script src="/assets/js/i18n.js"></script>
+    <script src="/assets/js/ux-copy.js"></script>
+    <script src="/assets/js/portal-i18n.js"></script>
+    <script src="/assets/js/api.js"></script>
+    <script src="/assets/js/user-panel.js?v=2.1.0"></script>
+  </body>
+</html>

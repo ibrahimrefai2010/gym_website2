@@ -1,0 +1,44 @@
+{
+  "name": "muscle-fitness-center",
+  "version": "2.0.0",
+  "description": "Production gym management system for Muscle and Fitness Center.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "build": "node scripts/build.js",
+    "prod:check": "node scripts/production-check.js",
+    "db:migrate": "node scripts/migrate.js up",
+    "db:rollback": "node scripts/migrate.js down",
+    "db:seed": "node src/db/seed.js",
+    "admin:ensure": "node scripts/ensure-admin.js",
+    "check": "node scripts/check.js"
+  },
+  "keywords": [
+    "gym",
+    "bilingual",
+    "express",
+    "mysql",
+    "jwt",
+    "stripe"
+  ],
+  "license": "UNLICENSED",
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.4.0",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.11.0",
+    "node-cron": "^4.5.0",
+    "nodemailer": "^9.0.1",
+    "pino": "^9.4.0",
+    "qrcode": "^1.5.4",
+    "stripe": "^16.8.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}

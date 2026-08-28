@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta
+      name="description"
+      content="A premium bilingual gym website for memberships, coaching, offers, calculators, contact, and member access."
+    >
+    <meta name="theme-color" content="#080808">
+    <meta property="og:title" content="Muscle and Fitness Center">
+    <meta property="og:description" content="A private training environment built around coaching and measurable progress.">
+    <meta property="og:type" content="website">
+    <meta property="og:image" content="/assets/images/hero-gym.png" data-site-og-image>
+    <title>Muscle and Fitness Center | Premium Training Club</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    >
+    <link rel="stylesheet" href="/assets/css/styles.css?v=2.1.0">
+  </head>
+  <body data-page="home">
+    <a class="skip-link" href="#main" data-i18n="skip">Skip to content</a>
+
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="/" aria-label="Home">
+          <img class="brand-logo" src="/assets/logo.png" alt="" width="40" height="40" data-site-image="logo">
+          <span data-brand-name></span>
+        </a>
+        <div class="nav-panel" id="siteNav">
+          <a class="nav-link" href="#about" data-i18n="nav.about">About</a>
+          <a class="nav-link" href="#coaching" data-i18n="nav.coaching">Coaching</a>
+          <a class="nav-link" href="#memberships" data-i18n="nav.memberships">Memberships</a>
+          <a class="nav-link" href="#offers" data-i18n="nav.offers">Offers</a>
+          <a class="nav-link" href="#calculators" data-i18n="nav.calculators">Calculators</a>
+          <a class="nav-link" href="#contact" data-i18n="nav.contact">Contact</a>
+        </div>
+        <div class="nav-actions">
+          <div class="language-switch" aria-label="Language">
+            <button type="button" data-lang-toggle="en" aria-pressed="true">EN</button>
+            <button type="button" data-lang-toggle="ar" aria-pressed="false">ع</button>
+          </div>
+          <a class="btn small secondary" href="/login.html" data-i18n="nav.login">Login</a>
+        </div>
+        <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="siteNav">
+          <span aria-hidden="true"></span>
+        </button>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero" id="home">
+        <picture class="hero-media" data-site-picture="homeHero">
+          <source srcset="/assets/images/hero-gym.webp" type="image/webp">
+          <img src="/assets/images/hero-gym.png" alt="" fetchpriority="high">
+        </picture>
+        <div class="container hero-content reveal">
+          <p class="eyebrow" data-i18n="home.eyebrow">Private training club</p>
+          <h1 data-home-hero-title>Train in a quieter kind of luxury.</h1>
+          <p data-home-hero-body>A private training environment built around coaching, precision, and measurable progress.</p>
+          <div class="hero-actions">
+            <a class="btn" href="#memberships" data-i18n="home.hero.cta.primary">View memberships</a>
+            <a class="btn secondary" href="#contact" data-i18n="home.hero.cta.secondary">Contact the club</a>
+          </div>
+          <dl class="hero-metrics" id="heroMetrics"></dl>
+        </div>
+      </section>
+
+      <section class="intro-band" aria-label="Highlights">
+        <div class="container intro-band-grid">
+          <div class="intro-item"><span class="intro-dot" aria-hidden="true"></span><span data-i18n="home.intro.one">Coaching-first floor management</span></div>
+          <div class="intro-item"><span class="intro-dot" aria-hidden="true"></span><span data-i18n="home.intro.two">Structured plans and renewals</span></div>
+          <div class="intro-item"><span class="intro-dot" aria-hidden="true"></span><span data-i18n="home.intro.three">Arabic and English member experience</span></div>
+        </div>
+      </section>
+
+      <section class="section" id="about">
+        <div class="container split">
+          <div class="statement reveal">
+            <p class="eyebrow" data-i18n="about.eyebrow">About</p>
+            <h2 data-home-about-title>Designed for disciplined progress.</h2>
+            <p data-home-about-body>
+              The club combines refined training spaces, structured membership plans, and attentive service for members who value quality over noise.
+            </p>
+          </div>
+          <div class="feature-grid">
+            <article class="feature-card reveal">
+              <span class="feature-icon" aria-hidden="true">01</span>
+              <h3 data-i18n="about.feature.one.title">Quiet operations</h3>
+              <p data-i18n="about.feature.one.body">A controlled membership model keeps the floor focused and service personal.</p>
+            </article>
+            <article class="feature-card reveal">
+              <span class="feature-icon" aria-hidden="true">02</span>
+              <h3 data-i18n="about.feature.two.title">Measured training</h3>
+              <p data-i18n="about.feature.two.body">Assessments, reviews, and membership data support better decisions over time.</p>
+            </article>
+            <article class="feature-card reveal">
+              <span class="feature-icon" aria-hidden="true">03</span>
+              <h3 data-i18n="about.feature.three.title">Premium essentials</h3>
+              <p data-i18n="about.feature.three.body">Strong equipment, calm spaces, and clear communication without unnecessary noise.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section tight" id="coaching">
+        <div class="container coaching-block">
+          <div class="coaching-copy reveal">
+            <p class="eyebrow" data-i18n="coaching.eyebrow">Coaching</p>
+            <h2 data-home-coaching-title>Managed by certified coaches.</h2>
+            <p data-home-coaching-body>
+              Our floor is supervised by experienced coaches who guide assessments, technique, and training progression with a professional standard.
+            </p>
+          </div>
+          <ul class="coaching-list">
+            <li class="reveal"><span class="check" aria-hidden="true">✓</span><span data-i18n="coaching.item.one">Technique reviews</span></li>
+            <li class="reveal"><span class="check" aria-hidden="true">✓</span><span data-i18n="coaching.item.two">Body composition checks</span></li>
+            <li class="reveal"><span class="check" aria-hidden="true">✓</span><span data-i18n="coaching.item.three">Training progression</span></li>
+            <li class="reveal"><span class="check" aria-hidden="true">✓</span><span data-i18n="coaching.item.four">Renewal guidance</span></li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="section" id="memberships">
+        <div class="container">
+          <div class="section-header center reveal">
+            <p class="eyebrow" data-i18n="plans.eyebrow">Memberships</p>
+            <h2 data-i18n="plans.title">Plans that scale with commitment.</h2>
+            <p data-i18n="plans.body">Each plan is clear, editable from the dashboard, and ready for future Stripe checkout.</p>
+          </div>
+          <div class="plans-grid" id="plansGrid" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <section class="section section-dark" id="offers">
+        <div class="container offers-layout">
+          <div>
+            <div class="section-header reveal">
+              <p class="eyebrow" data-i18n="offers.eyebrow">Offers</p>
+              <h2 data-i18n="offers.title">Announcements with restraint.</h2>
+              <p data-i18n="offers.body">Seasonal campaigns and operational updates are served from the database-backed slider.</p>
+            </div>
+            <div class="offer-list" id="offerList"></div>
+          </div>
+          <div class="slider reveal" id="offersSlider">
+            <div id="sliderSlides"></div>
+            <div class="slider-controls">
+              <button class="icon-button" type="button" data-slide-prev data-i18n-label="offers.prev" aria-label="Previous slide">‹</button>
+              <button class="icon-button" type="button" data-slide-next data-i18n-label="offers.next" aria-label="Next slide">›</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="calculators">
+        <div class="container">
+          <div class="section-header center reveal">
+            <p class="eyebrow" data-i18n="calculator.eyebrow">Calculators</p>
+            <h2 data-i18n="calculator.title">Useful numbers, presented cleanly.</h2>
+            <p data-i18n="calculator.body">BMI, calorie, and macro estimates are available without creating friction in the membership flow.</p>
+          </div>
+
+          <div class="calculator-shell reveal">
+            <div class="tabs" role="tablist" aria-label="Calculators">
+              <button class="tab-button" type="button" role="tab" data-calc-tab="bmi" aria-selected="true" data-i18n="calculator.bmi">BMI</button>
+              <button class="tab-button" type="button" role="tab" data-calc-tab="calories" aria-selected="false" data-i18n="calculator.calories">Calories</button>
+              <button class="tab-button" type="button" role="tab" data-calc-tab="macros" aria-selected="false" data-i18n="calculator.macros">Macros</button>
+            </div>
+
+            <form class="calculator-panel is-active" id="bmiForm" data-calc-panel="bmi">
+              <div class="form-grid">
+                <div class="field">
+                  <label for="bmiWeight" data-i18n="field.weight">Weight (kg)</label>
+                  <input id="bmiWeight" name="weight" type="number" min="30" max="260" value="82" required>
+                </div>
+                <div class="field">
+                  <label for="bmiHeight" data-i18n="field.height">Height (cm)</label>
+                  <input id="bmiHeight" name="height" type="number" min="120" max="230" value="178" required>
+                </div>
+              </div>
+              <button class="btn" type="submit" data-i18n="form.calculate">Calculate</button>
+              <div class="result-box" id="bmiResult" aria-live="polite"></div>
+            </form>
+
+            <form class="calculator-panel" id="calorieForm" data-calc-panel="calories">
+              <div class="form-grid">
+                <div class="field">
+                  <label for="calSex" data-i18n="field.sex">Sex</label>
+                  <select id="calSex" name="sex">
+                    <option value="male" data-i18n="option.male">Male</option>
+                    <option value="female" data-i18n="option.female">Female</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="calAge" data-i18n="field.age">Age</label>
+                  <input id="calAge" name="age" type="number" min="14" max="90" value="32" required>
+                </div>
+                <div class="field">
+                  <label for="calWeight" data-i18n="field.weight">Weight (kg)</label>
+                  <input id="calWeight" name="weight" type="number" min="30" max="260" value="82" required>
+                </div>
+                <div class="field">
+                  <label for="calHeight" data-i18n="field.height">Height (cm)</label>
+                  <input id="calHeight" name="height" type="number" min="120" max="230" value="178" required>
+                </div>
+                <div class="field">
+                  <label for="calActivity" data-i18n="field.activity">Activity</label>
+                  <select id="calActivity" name="activity">
+                    <option value="1.375" data-i18n="option.light">Light</option>
+                    <option value="1.55" selected data-i18n="option.moderate">Moderate</option>
+                    <option value="1.725" data-i18n="option.high">High</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="calGoal" data-i18n="field.goal">Goal</label>
+                  <select id="calGoal" name="goal">
+                    <option value="0" data-i18n="option.maintain">Maintain</option>
+                    <option value="-350" data-i18n="option.loss">Fat loss</option>
+                    <option value="250" data-i18n="option.gain">Muscle gain</option>
+                  </select>
+                </div>
+              </div>
+              <button class="btn" type="submit" data-i18n="form.calculate">Calculate</button>
+              <div class="result-box" id="calorieResult" aria-live="polite"></div>
+            </form>
+
+            <form class="calculator-panel" id="macroForm" data-calc-panel="macros">
+              <div class="form-grid">
+                <div class="field">
+                  <label for="macroCalories" data-i18n="field.calories">Daily calories</label>
+                  <input id="macroCalories" name="calories" type="number" min="1000" max="6000" value="2400" required>
+                </div>
+                <div class="field">
+                  <label for="macroGoal" data-i18n="field.goal">Goal</label>
+                  <select id="macroGoal" name="goal">
+                    <option value="balanced" data-i18n="option.balanced">Balanced</option>
+                    <option value="loss" data-i18n="option.loss">Fat loss</option>
+                    <option value="gain" data-i18n="option.gain">Muscle gain</option>
+                  </select>
+                </div>
+              </div>
+              <button class="btn" type="submit" data-i18n="form.calculate">Calculate</button>
+              <div class="result-box" id="macroResult" aria-live="polite"></div>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <section class="section tight" id="faq">
+        <div class="container">
+          <div class="section-header center reveal">
+            <p class="eyebrow" data-i18n="faq.eyebrow">FAQ</p>
+            <h2 data-i18n="faq.title">Clear answers before the first visit.</h2>
+          </div>
+          <div class="faq-list" id="faqList"></div>
+        </div>
+      </section>
+
+      <section class="section" id="contact">
+        <div class="container contact-layout">
+          <div class="contact-card reveal">
+            <p class="eyebrow" data-i18n="contact.eyebrow">Contact</p>
+            <h2 data-i18n="contact.title">Speak with membership.</h2>
+            <p data-i18n="contact.body">For tours, renewals, and private coaching inquiries, contact the club directly.</p>
+            <ul class="contact-list">
+              <li><span data-i18n="contact.phone">Phone</span><strong data-contact-phone></strong></li>
+              <li><span data-i18n="contact.email">Email</span><strong data-contact-email></strong></li>
+              <li><span data-i18n="contact.address">Address</span><strong data-contact-address></strong></li>
+              <li><span data-i18n="contact.hours">Working hours</span><div id="workingHours"></div></li>
+            </ul>
+            <form class="auth-form" id="contactForm" novalidate>
+              <input type="text" name="website" style="display:none" tabindex="-1" autocomplete="off">
+              <div class="form-grid">
+                <div class="field">
+                  <label for="contactName" data-i18n="field.name">Full name</label>
+                  <input id="contactName" name="name" type="text" autocomplete="name" required>
+                </div>
+                <div class="field">
+                  <label for="contactPhone" data-i18n="field.phone">Phone</label>
+                  <input id="contactPhone" name="phone" type="tel" autocomplete="tel" required>
+                </div>
+                <div class="field">
+                  <label for="contactEmail" data-i18n="field.email">Email</label>
+                  <input id="contactEmail" name="email" type="email" autocomplete="email" required>
+                </div>
+                <div class="field">
+                  <label for="contactSubject" data-i18n="field.subject">Subject</label>
+                  <input id="contactSubject" name="subject" type="text" required>
+                </div>
+                <div class="field full">
+                  <label for="contactMessage" data-i18n="field.message">Message</label>
+                  <textarea id="contactMessage" name="message" required></textarea>
+                </div>
+              </div>
+              <button class="btn" type="submit" data-i18n="contact.send">Send message</button>
+              <p class="form-message" id="contactMessageStatus" aria-live="polite"></p>
+            </form>
+            <a class="btn" data-whatsapp-link href="#" data-i18n="contact.whatsapp">WhatsApp</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-grid">
+        <a class="brand" href="/" aria-label="Home">
+          <img class="brand-logo" src="/assets/logo.png" alt="" width="40" height="40" data-site-image="logo">
+          <span data-brand-name></span>
+        </a>
+        <div class="footer-links">
+          <span>© <span data-current-year></span> <span data-brand-name></span></span>
+          <span data-i18n="footer.rights">All rights reserved.</span>
+        </div>
+      </div>
+    </footer>
+
+    <a class="whatsapp-float" data-whatsapp-link href="#" data-i18n="contact.whatsapp">WhatsApp</a>
+
+    <script src="/assets/js/data.js"></script>
+    <script src="/assets/js/i18n.js"></script>
+    <script src="/assets/js/ux-copy.js"></script>
+    <script src="/assets/js/api.js?v=2.1.0"></script>
+    <script src="/assets/js/main.js"></script>
+  </body>
+</html>

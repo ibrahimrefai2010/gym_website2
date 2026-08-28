@@ -1,0 +1,130 @@
+const path = require("path");
+const cors = require("cors");
+const express = require("express");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
+const { env } = require("./config/env");
+const { authenticate, requireAdmin } = require("./middleware/auth");
+const { errorHandler, notFound } = require("./middleware/errorHandler");
+const publicRoutes = require("./routes/publicRoutes");
+const authRoutes = require("./routes/authRoutes");
+const adminAuthRoutes = require("./routes/adminAuthRoutes");
+const userRoutes = require("./routes/userRoutes");
+const memberRoutes = require("./routes/memberRoutes");
+const adminRoutes = require("./routes/adminRoutes");
+const paymentRoutes = require("./routes/paymentRoutes");
+const planRoutes = require("./routes/planRoutes");
+const offerRoutes = require("./routes/offerRoutes");
+const messageRoutes = require("./routes/messageRoutes");
+const membershipRoutes = require("./routes/membershipRoutes");
+const settingsRoutes = require("./routes/settingsRoutes");
+const branchRoutes = require("./routes/branchRoutes");
+const customerRoutes = require("./routes/customerRoutes");
+const invoiceRoutes = require("./routes/invoiceRoutes");
+const expenseRoutes = require("./routes/expenseRoutes");
+const attendanceRoutes = require("./routes/attendanceRoutes");
+const documentRoutes = require("./routes/documentRoutes");
+const reportRoutes = require("./routes/reportRoutes");
+const searchRoutes = require("./routes/searchRoutes");
+const aiRoutes = require("./routes/aiRoutes");
+
+const app = express();
+const publicDir = path.join(__dirname, "..", "public");
+
+function rateMessage(message) {
+  return { success: false, error: message };
+}
+
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 100,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: rateMessage("Too many requests. Please try again shortly.")
+});
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: env.rateLimitLogin,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: rateMessage("Too many login attempts. Try again shortly.")
+});
+
+const adminLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: rateMessage("Too many admin login attempts. Try again shortly.")
+});
+
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: env.rateLimitRegister,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: rateMessage("Too many registration attempts. Try again later.")
+});
+
+const otpLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: env.rateLimitOtp,
+  keyGenerator: (req) => String(req.body?.identifier || req.ip),
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: rateMessage("Too many OTP requests. Try again later.")
+});
+
+app.disable("x-powered-by");
+app.set("trust proxy", 1);
+
+app.use(helmet());
+app.use(cors({ origin: env.corsOrigin, credentials: true }));
+app.use("/api/v1/payments/webhook", express.raw({ type: "application/json", limit: "100kb" }));
+app.use("/api/v1/admin/uploads/images", express.json({ limit: "6mb" }));
+app.use(express.json({ limit: "10kb" }));
+app.use("/api/", generalLimiter);
+app.use("/api/v1/auth/login", loginLimiter);
+app.use("/api/v1/auth/register", registerLimiter);
+app.use("/api/v1/auth/forgot-password", otpLimiter);
+app.use("/api/v1/admin/auth/login", adminLoginLimiter);
+
+app.use(
+  express.static(publicDir, {
+    extensions: ["html"],
+    maxAge: env.nodeEnv === "production" ? "1h" : 0
+  })
+);
+
+app.use("/api/v1/public", publicRoutes);
+app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/admin/auth", adminAuthRoutes);
+app.use("/api/v1/settings", settingsRoutes);
+app.use("/api/v1/plans", planRoutes);
+app.use("/api/v1/offers", offerRoutes);
+app.use("/api/v1/messages", messageRoutes);
+app.use("/api/v1/memberships", membershipRoutes);
+app.use("/api/v1/payments", paymentRoutes);
+app.use("/api/v1/branches", branchRoutes);
+app.use("/api/v1/customers", customerRoutes);
+app.use("/api/v1/invoices", invoiceRoutes);
+app.use("/api/v1/expenses", expenseRoutes);
+app.use("/api/v1/attendance", attendanceRoutes);
+app.use("/api/v1/documents", documentRoutes);
+app.use("/api/v1/reports", reportRoutes);
+app.use("/api/v1/search", searchRoutes);
+app.use("/api/v1/ai", aiRoutes);
+app.use("/api/v1/user", authenticate, memberRoutes);
+app.use("/api/v1/user", authenticate, userRoutes);
+app.use("/api/v1/users", authenticate, requireAdmin, userRoutes);
+app.use("/api/v1/admin", authenticate, requireAdmin, adminRoutes);
+
+app.get("/", (_req, res) => {
+  res.sendFile(path.join(publicDir, "index.html"));
+});
+
+app.use("/api", notFound);
+app.use(errorHandler);
+
+module.exports = app;

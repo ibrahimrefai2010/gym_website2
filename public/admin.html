@@ -1,0 +1,526 @@
+<!doctype html>
+<html class="admin-page-root" lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="لوحة إدارة وتشغيل النادي.">
+    <meta name="theme-color" content="#090909">
+    <title>مركز بناء ولياقة الرياضي | الإدارة</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    >
+    <link rel="stylesheet" href="/assets/css/styles.css?v=2.1.0">
+  </head>
+  <body class="admin-page">
+    <a class="skip-link" href="#adminMain" data-i18n="skip">تجاوز إلى المحتوى</a>
+    <main class="admin-app">
+      <aside class="admin-sidebar">
+        <div class="admin-sidebar-head">
+          <a class="brand" href="/">
+            <img class="brand-logo" src="/assets/logo.png" alt="" width="40" height="40" data-site-image="logo">
+            <span data-brand-name></span>
+          </a>
+          <button class="admin-sidebar-toggle" type="button" aria-expanded="false" aria-controls="adminNav">القائمة</button>
+        </div>
+        <nav class="admin-menu" id="adminNav" aria-label="الإدارة">
+          <button type="button" class="is-active" data-admin-tab="overview" data-i18n="admin.overview">نظرة عامة</button>
+          <button type="button" data-admin-tab="users" data-i18n="admin.users">المستخدمون</button>
+          <button type="button" data-admin-tab="plans" data-i18n="admin.plans">العضويات</button>
+          <button type="button" data-admin-tab="memberships" data-i18n="admin.activeMemberships">العضويات النشطة</button>
+          <button type="button" data-admin-tab="offers" data-i18n="admin.offers">العروض</button>
+          <button type="button" data-admin-tab="homepage" data-i18n="admin.homepage">محتوى الرئيسية</button>
+          <button type="button" data-admin-tab="images">Images</button>
+          <button type="button" data-admin-tab="slider" data-i18n="admin.slider">السلايدر</button>
+          <button type="button" data-admin-tab="contact" data-i18n="admin.contactInfo">معلومات التواصل</button>
+          <button type="button" data-admin-tab="messages" data-i18n="admin.messages">الرسائل</button>
+          <button type="button" data-admin-tab="settings" data-i18n="admin.settings">الإعدادات</button>
+          <button type="button" data-admin-tab="payments" data-i18n="admin.payments">المدفوعات</button>
+          <button type="button" data-admin-tab="statistics" data-i18n="admin.statistics">الإحصائيات</button>
+          <button type="button" data-admin-tab="adminAccounts" data-i18n="admin.adminAccounts">حسابات الإدارة</button>
+          <button type="button" data-admin-tab="access">Access Control</button>
+          <button type="button" data-admin-tab="aiAssistant">AI Assistant</button>
+          <button type="button" data-admin-tab="logs" data-i18n="admin.logs">السجلات</button>
+        </nav>
+        <div class="admin-menu">
+          <a href="/" data-i18n="nav.home">الرئيسية</a>
+          <button type="button" id="adminLogout" data-i18n="nav.logout">خروج</button>
+        </div>
+      </aside>
+
+      <section class="admin-main" id="adminMain">
+        <div class="admin-topbar">
+          <div>
+            <p class="eyebrow" data-i18n="nav.admin">الإدارة</p>
+            <h1 data-i18n="admin.title">لوحة التشغيل</h1>
+            <p data-i18n="admin.body">الأعضاء، والعضويات، والعروض، والأسعار، والمحتوى، والمدفوعات، والسجلات.</p>
+          </div>
+          <a class="btn small" href="/user.html" data-i18n="nav.account">الحساب</a>
+        </div>
+
+        <section class="admin-section is-active" data-admin-section="overview">
+          <div class="admin-grid" id="adminStats"></div>
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.statistics">الإحصائيات</h2>
+              <span class="badge">تفاعلي</span>
+            </div>
+            <div class="chart-grid">
+              <div class="chart-card"><canvas id="revenueChart" width="520" height="190" aria-label="مخطط الإيرادات"></canvas></div>
+              <div class="chart-card"><canvas id="growthChart" width="520" height="190" aria-label="مخطط نمو العضويات"></canvas></div>
+            </div>
+          </div>
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.users">المستخدمون</h2>
+              <span class="badge">مباشر</span>
+            </div>
+            <div class="table-shell">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th data-i18n="table.member">العضو</th>
+                    <th>البريد</th>
+                    <th data-i18n="table.plan">الباقة</th>
+                    <th data-i18n="table.status">الحالة</th>
+                  </tr>
+                </thead>
+                <tbody id="overviewUsers"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-section" data-admin-section="memberships">
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.activeMemberships">العضويات النشطة</h2>
+            </div>
+            <div class="table-shell">
+              <table class="table">
+                <thead><tr><th data-i18n="table.member">العضو</th><th data-i18n="table.plan">الباقة</th><th>البداية</th><th>النهاية</th><th>الأيام</th><th data-i18n="table.status">الحالة</th><th>الدفع</th></tr></thead>
+                <tbody id="membershipRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-section" data-admin-section="users">
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.users">المستخدمون</h2>
+            </div>
+            <div class="table-shell">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th data-i18n="table.member">العضو</th>
+                    <th>البريد</th>
+                    <th data-i18n="field.phone">الجوال</th>
+                    <th data-i18n="table.plan">الباقة</th>
+                    <th data-i18n="table.status">الحالة</th>
+                  </tr>
+                </thead>
+                <tbody id="adminUsers"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-section" data-admin-section="plans">
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.plans">العضويات</h2>
+            </div>
+            <form class="auth-form" id="planForm" novalidate>
+              <input id="planId" name="id" type="hidden">
+              <div class="form-grid">
+                <div class="field"><label for="planNameEn">اسم الباقة الرئيسي</label><input id="planNameEn" name="nameEn" required></div>
+                <div class="field"><label for="planNameAr">اسم الباقة العربي</label><input id="planNameAr" name="nameAr" required></div>
+                <div class="field"><label for="planDescriptionEn">الوصف الرئيسي</label><input id="planDescriptionEn" name="descriptionEn" required></div>
+                <div class="field"><label for="planDescriptionAr">الوصف العربي</label><input id="planDescriptionAr" name="descriptionAr" required></div>
+                <div class="field"><label for="planDurationDays">مدة الباقة بالأيام</label><input id="planDurationDays" name="durationDays" type="number" min="1" value="30" required></div>
+                <div class="field"><label for="planBonusDays">الأيام الإضافية</label><input id="planBonusDays" name="bonusDays" type="number" min="0" value="0" required></div>
+                <div class="field"><label for="planPrice">السعر</label><input id="planPrice" name="price" type="number" min="1" step="0.01" required></div>
+                <div class="field"><label for="planOriginalPrice">السعر قبل الخصم</label><input id="planOriginalPrice" name="originalPrice" type="number" min="1" step="0.01"></div>
+                <div class="field"><label for="planSortOrder">ترتيب العرض</label><input id="planSortOrder" name="displayOrder" type="number" value="0" required></div>
+                <div class="field"><label for="planCurrency">العملة</label><input id="planCurrency" name="currency" value="SAR" required></div>
+                <label class="check-field" for="planIsFeatured"><input id="planIsFeatured" name="isFeatured" type="checkbox"> مميزة</label>
+                <label class="check-field" for="planIsActive"><input id="planIsActive" name="isActive" type="checkbox" checked> نشطة</label>
+              </div>
+              <div class="form-actions">
+                <button class="btn" type="submit" id="planSubmitButton" data-i18n="admin.savePlan">حفظ الباقة</button>
+                <button class="btn secondary" type="button" id="planCancelEdit" hidden>إلغاء التعديل</button>
+              </div>
+              <p class="form-message" id="planMessage" aria-live="polite"></p>
+            </form>
+          </div>
+          <div class="admin-panel table-shell">
+            <table class="table">
+              <thead><tr><th>الرقم</th><th>الاسم</th><th>العربي</th><th>المدة</th><th>السعر</th><th>الحالة</th><th>الإجراءات</th></tr></thead>
+              <tbody id="planRows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="admin-section" data-admin-section="offers">
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.offers">العروض</h2>
+            </div>
+            <form class="auth-form" id="offerForm" novalidate>
+              <input id="offerId" name="id" type="hidden">
+              <div class="form-grid">
+                <div class="field"><label for="offerTitleEn">عنوان العرض الرئيسي</label><input id="offerTitleEn" name="titleEn" required></div>
+                <div class="field"><label for="offerTitleAr">عنوان العرض العربي</label><input id="offerTitleAr" name="titleAr" required></div>
+                <div class="field"><label for="offerBadgeEn">وسم العرض الرئيسي</label><input id="offerBadgeEn" name="badgeEn" required></div>
+                <div class="field"><label for="offerBadgeAr">وسم العرض العربي</label><input id="offerBadgeAr" name="badgeAr" required></div>
+                <div class="field full"><label for="offerBodyEn">نص العرض الرئيسي</label><textarea id="offerBodyEn" name="bodyEn" required></textarea></div>
+                <div class="field full"><label for="offerBodyAr">نص العرض العربي</label><textarea id="offerBodyAr" name="bodyAr" required></textarea></div>
+                <div class="field"><label for="offerValidUntil">صالح حتى</label><input id="offerValidUntil" name="validUntil" type="date"></div>
+                <div class="field"><label for="offerImageUrl">Offer image URL</label><input id="offerImageUrl" name="imageUrl" placeholder="/uploads/images/offer.webp"></div>
+                <div class="field"><label for="offerImageFile">Upload offer image</label><input id="offerImageFile" name="imageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-upload-target="offerImageUrl"></div>
+                <div class="field"><label for="offerDiscountValue">Discount value</label><input id="offerDiscountValue" name="discountValue" type="number" min="0" step="0.01" value="0"></div>
+                <div class="field"><label for="offerSortOrder">Display order</label><input id="offerSortOrder" name="sortOrder" type="number" value="0"></div>
+                <label class="check-field" for="offerIsActive"><input id="offerIsActive" name="isActive" type="checkbox" checked> Active</label>
+              </div>
+              <div class="form-actions">
+                <button class="btn" type="submit" id="offerSubmitButton" data-i18n="admin.saveOffer">حفظ العرض</button>
+                <button class="btn secondary" type="button" id="offerCancelEdit" hidden>Cancel edit</button>
+              </div>
+              <p class="form-message" id="offerMessage" aria-live="polite"></p>
+            </form>
+          </div>
+          <div class="admin-panel table-shell">
+            <table class="table">
+              <thead><tr><th>الرقم</th><th>Image</th><th>العنوان</th><th>العربي</th><th>التاريخ</th><th>Actions</th></tr></thead>
+              <tbody id="offerRows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="admin-section" data-admin-section="images">
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <div>
+                <p class="eyebrow">Media</p>
+                <h2>Website images</h2>
+              </div>
+              <span class="badge">Upload or URL</span>
+            </div>
+            <form class="auth-form" id="siteImageForm" novalidate>
+              <div class="image-admin-grid">
+                <div class="image-field" data-image-preview-field="logoUrl">
+                  <img src="/assets/logo.png" alt="">
+                  <div class="field"><label for="siteLogoUrl">Logo URL</label><input id="siteLogoUrl" name="logoUrl" required></div>
+                  <div class="field"><label for="siteLogoFile">Upload logo</label><input id="siteLogoFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-upload-target="siteLogoUrl"></div>
+                </div>
+                <div class="image-field" data-image-preview-field="homeHeroImageUrl">
+                  <img src="/assets/images/hero-gym.png" alt="">
+                  <div class="field"><label for="homeHeroImageUrl">Homepage hero image URL</label><input id="homeHeroImageUrl" name="homeHeroImageUrl" required></div>
+                  <div class="field"><label for="homeHeroFile">Upload homepage hero</label><input id="homeHeroFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-upload-target="homeHeroImageUrl"></div>
+                </div>
+                <div class="image-field" data-image-preview-field="homeHeroFallbackImageUrl">
+                  <img src="/assets/images/hero-gym.png" alt="">
+                  <div class="field"><label for="homeHeroFallbackImageUrl">Homepage fallback image URL</label><input id="homeHeroFallbackImageUrl" name="homeHeroFallbackImageUrl" required></div>
+                  <div class="field"><label for="homeHeroFallbackFile">Upload homepage fallback</label><input id="homeHeroFallbackFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-upload-target="homeHeroFallbackImageUrl"></div>
+                </div>
+                <div class="image-field" data-image-preview-field="authHeroImageUrl">
+                  <img src="/assets/images/hero-gym.png" alt="">
+                  <div class="field"><label for="authHeroImageUrl">Login hero image URL</label><input id="authHeroImageUrl" name="authHeroImageUrl" required></div>
+                  <div class="field"><label for="authHeroFile">Upload login hero</label><input id="authHeroFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-upload-target="authHeroImageUrl"></div>
+                </div>
+                <div class="image-field" data-image-preview-field="authHeroFallbackImageUrl">
+                  <img src="/assets/images/hero-gym.png" alt="">
+                  <div class="field"><label for="authHeroFallbackImageUrl">Login fallback image URL</label><input id="authHeroFallbackImageUrl" name="authHeroFallbackImageUrl" required></div>
+                  <div class="field"><label for="authHeroFallbackFile">Upload login fallback</label><input id="authHeroFallbackFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-upload-target="authHeroFallbackImageUrl"></div>
+                </div>
+                <div class="image-field" data-image-preview-field="socialShareImageUrl">
+                  <img src="/assets/images/hero-gym.png" alt="">
+                  <div class="field"><label for="socialShareImageUrl">Social share image URL</label><input id="socialShareImageUrl" name="socialShareImageUrl" required></div>
+                  <div class="field"><label for="socialShareFile">Upload social image</label><input id="socialShareFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-upload-target="socialShareImageUrl"></div>
+                </div>
+              </div>
+              <button class="btn" type="submit">Save website images</button>
+              <p class="form-message" id="siteImageMessage" aria-live="polite"></p>
+            </form>
+          </div>
+        </section>
+
+        <section class="admin-section" data-admin-section="slider">
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.slider">السلايدر</h2>
+            </div>
+            <form class="auth-form" id="slideForm" novalidate>
+              <input id="slideId" name="id" type="hidden">
+              <div class="form-grid">
+                <div class="field"><label for="slideImageUrl">Slide image URL</label><input id="slideImageUrl" name="imageUrl" required></div>
+                <div class="field"><label for="slideImageFile">Upload slide image</label><input id="slideImageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-upload-target="slideImageUrl"></div>
+                <div class="field"><label for="slideFallbackImageUrl">Fallback image URL</label><input id="slideFallbackImageUrl" name="fallbackImageUrl"></div>
+                <div class="field"><label for="slideFallbackImageFile">Upload fallback image</label><input id="slideFallbackImageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-upload-target="slideFallbackImageUrl"></div>
+                <div class="field"><label for="slideTitleEn">Title English</label><input id="slideTitleEn" name="titleEn" required></div>
+                <div class="field"><label for="slideTitleAr">Title Arabic</label><input id="slideTitleAr" name="titleAr" required></div>
+                <div class="field full"><label for="slideBodyEn">Body English</label><textarea id="slideBodyEn" name="bodyEn" required></textarea></div>
+                <div class="field full"><label for="slideBodyAr">Body Arabic</label><textarea id="slideBodyAr" name="bodyAr" required></textarea></div>
+                <div class="field"><label for="slideSortOrder">Display order</label><input id="slideSortOrder" name="sortOrder" type="number" value="0"></div>
+                <label class="check-field" for="slideIsActive"><input id="slideIsActive" name="isActive" type="checkbox" checked> Active</label>
+              </div>
+              <div class="form-actions">
+                <button class="btn" type="submit" id="slideSubmitButton">Save slide</button>
+                <button class="btn secondary" type="button" id="slideCancelEdit" hidden>Cancel edit</button>
+              </div>
+              <p class="form-message" id="slideMessage" aria-live="polite"></p>
+            </form>
+            <div class="table-shell">
+              <table class="table">
+                <thead><tr><th>الرقم</th><th>Image</th><th>العنوان</th><th>العربي</th><th>الحالة</th><th>Actions</th></tr></thead>
+                <tbody id="sliderRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-section" data-admin-section="homepage">
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.homepage">محتوى الرئيسية</h2>
+              <span class="badge">بدون HTML</span>
+            </div>
+            <div class="table-shell">
+              <table class="table">
+                <thead><tr><th>القسم</th><th>المحتوى</th><th>العربي</th></tr></thead>
+                <tbody id="homepageRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-section" data-admin-section="contact">
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.contactInfo">معلومات التواصل</h2>
+            </div>
+            <div class="settings-grid" id="contactCards"></div>
+          </div>
+        </section>
+
+        <section class="admin-section" data-admin-section="messages">
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.messages">الرسائل</h2>
+              <span class="badge" id="unreadBadge">0 غير مقروءة</span>
+            </div>
+            <div class="table-shell">
+              <table class="table">
+                <thead><tr><th>المرسل</th><th data-i18n="field.phone">الجوال</th><th>البريد</th><th>الموضوع</th><th data-i18n="table.status">الحالة</th><th data-i18n="table.date">التاريخ</th><th>الإجراءات</th></tr></thead>
+                <tbody id="messageRows"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="admin-panel message-detail" id="messageDetail" hidden>
+            <div class="admin-panel-header">
+              <div>
+                <p class="eyebrow">الرسالة</p>
+                <h2 id="messageDetailSubject">الموضوع</h2>
+              </div>
+              <button class="btn small secondary" type="button" data-message-close>إغلاق</button>
+            </div>
+            <div class="message-detail-meta" id="messageDetailMeta"></div>
+            <p class="message-detail-body" id="messageDetailBody"></p>
+            <div class="form-actions">
+              <button class="btn small secondary" type="button" data-message-detail-action="read">تمييز كمقروءة</button>
+              <button class="btn small secondary" type="button" data-message-detail-action="archived">أرشفة</button>
+              <button class="btn small danger" type="button" data-message-detail-action="delete">حذف</button>
+            </div>
+            <p class="form-message" id="messageActionStatus" aria-live="polite"></p>
+          </div>
+        </section>
+
+        <section class="admin-section" data-admin-section="settings">
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.settings">الإعدادات</h2>
+            </div>
+            <form class="auth-form" id="settingForm" novalidate>
+              <div class="form-grid">
+                <div class="field"><label for="settingKey">المفتاح</label><input id="settingKey" name="key" value="gym_name_en" required></div>
+                <div class="field"><label for="settingValue">القيمة</label><input id="settingValue" name="value" value="" required></div>
+              </div>
+              <button class="btn" type="submit" data-i18n="admin.saveSetting">حفظ الإعداد</button>
+              <p class="form-message" id="settingMessage" aria-live="polite"></p>
+            </form>
+          </div>
+          <div class="admin-panel">
+            <h2 data-i18n="nav.contact">التواصل</h2>
+            <p id="settingsContact"></p>
+          </div>
+        </section>
+
+        <section class="admin-section" data-admin-section="payments">
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.payments">المدفوعات</h2>
+            </div>
+            <div class="table-shell">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>الرقم</th>
+                    <th data-i18n="table.member">العضو</th>
+                    <th data-i18n="table.amount">المبلغ</th>
+                    <th data-i18n="table.status">الحالة</th>
+                    <th data-i18n="table.date">التاريخ</th>
+                  </tr>
+                </thead>
+                <tbody id="paymentRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-section" data-admin-section="statistics">
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.statistics">الإحصائيات</h2>
+            </div>
+            <div class="chart-grid">
+              <div class="chart-card"><canvas id="revenueChartLarge" width="820" height="260" aria-label="مخطط الإيرادات"></canvas></div>
+              <div class="chart-card"><canvas id="growthChartLarge" width="820" height="260" aria-label="مخطط النمو"></canvas></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-section" data-admin-section="adminAccounts">
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.adminAccounts">حسابات الإدارة</h2>
+            </div>
+            <div class="table-shell">
+              <table class="table">
+                <thead><tr><th>الرقم</th><th>الاسم</th><th>البريد</th><th>الدور</th></tr></thead>
+                <tbody id="adminAccountRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-section" data-admin-section="access">
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2>Access Control</h2>
+              <span class="badge">RBAC</span>
+            </div>
+            <div class="rbac-layout">
+              <div class="table-shell">
+                <table class="table">
+                  <thead><tr><th>Role</th><th>Status</th><th>Permissions</th><th></th></tr></thead>
+                  <tbody id="roleRows"></tbody>
+                </table>
+              </div>
+              <form class="auth-form" id="rolePermissionForm" novalidate>
+                <input id="selectedRoleKey" name="roleKey" type="hidden">
+                <div class="admin-panel-header">
+                  <h3 id="selectedRoleTitle">Role permissions</h3>
+                  <button class="btn small" type="submit">Save</button>
+                </div>
+                <div class="permission-grid" id="permissionChecks"></div>
+                <p class="form-message" id="rbacMessage" aria-live="polite"></p>
+              </form>
+            </div>
+          </div>
+
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2>Roles</h2>
+            </div>
+            <form class="auth-form" id="roleForm" novalidate>
+              <div class="form-grid">
+                <div class="field"><label for="roleKey">Key</label><input id="roleKey" name="key" placeholder="branch_sales" required></div>
+                <div class="field"><label for="roleDisplayName">Name</label><input id="roleDisplayName" name="displayName" required></div>
+                <div class="field full"><label for="roleDescription">Description</label><input id="roleDescription" name="description"></div>
+                <label class="check-field" for="roleIsActive"><input id="roleIsActive" name="isActive" type="checkbox" checked> Active</label>
+              </div>
+              <button class="btn" type="submit">Save Role</button>
+              <p class="form-message" id="roleMessage" aria-live="polite"></p>
+            </form>
+          </div>
+
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2>Admin Assignments</h2>
+            </div>
+            <form class="auth-form" id="adminRoleForm" novalidate>
+              <div class="form-grid">
+                <div class="field"><label for="adminRoleAdminId">Admin ID</label><input id="adminRoleAdminId" name="adminId" type="number" min="1" required></div>
+                <div class="field full"><label for="adminRoleOptions">Roles</label><select id="adminRoleOptions" name="roles" multiple size="6"></select></div>
+              </div>
+              <button class="btn" type="submit">Assign Roles</button>
+              <p class="form-message" id="adminRoleMessage" aria-live="polite"></p>
+            </form>
+            <div class="table-shell">
+              <table class="table">
+                <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Roles</th></tr></thead>
+                <tbody id="adminAssignmentRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-section" data-admin-section="aiAssistant">
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2>AI Assistant</h2>
+              <span class="badge">Live</span>
+            </div>
+            <form class="auth-form" id="aiAssistantForm" novalidate>
+              <div class="form-grid">
+                <div class="field full">
+                  <label for="aiPrompt">Ask about customers, revenue, renewals, retention, reports, or sales ideas</label>
+                  <textarea id="aiPrompt" name="prompt" required>Show today's revenue</textarea>
+                </div>
+              </div>
+              <button class="btn" type="submit">Ask</button>
+              <p class="form-message" id="aiAssistantMessage" aria-live="polite"></p>
+            </form>
+            <div class="ai-answer" id="aiAnswer"></div>
+          </div>
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2>Smart Summary</h2>
+            </div>
+            <div class="admin-grid" id="smartMetricRows"></div>
+            <div class="table-shell">
+              <table class="table">
+                <thead><tr><th>Recommendation</th><th>Category</th><th>Priority</th></tr></thead>
+                <tbody id="aiRecommendationRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-section" data-admin-section="logs">
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.logs">السجلات</h2>
+            </div>
+            <div class="table-shell">
+              <table class="table">
+                <thead><tr><th>الرقم</th><th>المستوى</th><th>الرسالة</th><th>التاريخ</th></tr></thead>
+                <tbody id="logRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script src="/assets/js/data.js"></script>
+    <script src="/assets/js/i18n.js"></script>
+    <script src="/assets/js/ux-copy.js"></script>
+    <script src="/assets/js/api.js?v=2.1.0"></script>
+    <script src="/assets/js/admin-dashboard.js?v=2.1.0"></script>
+  </body>
+</html>
