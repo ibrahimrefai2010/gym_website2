@@ -2557,3 +2557,52 @@ html[dir="rtl"] .hero::after {
   gap: 14px;
   align-items: center;
 }
+
+/* ---- Admin members filter + detail ---- */
+.member-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-block-end: 14px;
+}
+
+.member-filter input[type="search"] {
+  flex: 1 1 240px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-white);
+  color: var(--color-black);
+  font: inherit;
+}
+
+.member-filter select {
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-white);
+  color: var(--color-black);
+  font: inherit;
+}
+
+.admin-app .member-filter input[type="search"],
+.admin-app .member-filter select {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-white);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+#adminUsers tr {
+  cursor: pointer;
+}
+
+#adminUsers tr:hover td {
+  background: rgba(200, 168, 103, 0.12);
+}
+
+#memberDetail .data-list > div {
+  border-color: rgba(255, 255, 255, 0.12);
+}

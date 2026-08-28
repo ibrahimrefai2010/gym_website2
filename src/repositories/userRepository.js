@@ -181,8 +181,8 @@ async function listUsers({ page = 1, pageSize = 10, search = "", status = "", me
      LEFT JOIN plans p ON p.id = m.plan_id
      WHERE ${where.join(" AND ")}
      ORDER BY u.created_at DESC
-     LIMIT ? OFFSET ?`,
-    [...params, limit, offset]
+     LIMIT ${limit} OFFSET ${offset}`,
+    params
   );
   const totalRows = await query(
     `SELECT COUNT(*) AS total

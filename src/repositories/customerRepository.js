@@ -41,6 +41,7 @@ function mapCustomer(row) {
     fullName: row.full_name,
     email: row.email,
     phone: row.phone,
+    memberCode: row.member_code || null,
     status: row.status,
     gender: row.gender || "unspecified",
     nationality: row.nationality || "",
@@ -81,7 +82,8 @@ async function listCustomers({ page = 1, pageSize = 25, search = "", status = ""
     params.push(nationality);
   }
   if (membershipStatus) {
-    where.push("m.status = ?");
+    // The display join is active-only, so match any membership of that status via a subquery.
+    where.push("EXISTS (SELECT 1 FROM memberships mm WHERE mm.user_id = u.id AND mm.status = ?)");
     params.push(membershipStatus);
   }
 
@@ -94,14 +96,14 @@ async function listCustomers({ page = 1, pageSize = 25, search = "", status = ""
     LEFT JOIN memberships m ON m.user_id = u.id AND m.status = 'active'
     LEFT JOIN plans p ON p.id = m.plan_id`;
   const rows = await query(
-    `SELECT u.id, u.branch_id, b.name_en AS branch_name, u.full_name, u.email, u.phone,
+    `SELECT u.id, u.branch_id, b.name_en AS branch_name, u.full_name, u.email, u.phone, u.member_code,
       u.status, u.created_at, u.updated_at, cp.gender, cp.nationality, cp.birth_date,
       cp.city, m.status AS membership_status, p.name_en AS membership_plan
      ${baseJoin}
      WHERE ${where.join(" AND ")}
      ORDER BY u.created_at DESC
-     LIMIT ? OFFSET ?`,
-    [...params, limit, offset]
+     LIMIT ${limit} OFFSET ${offset}`,
+    params
   );
   const totalRows = await query(`SELECT COUNT(DISTINCT u.id) AS total ${baseJoin} WHERE ${where.join(" AND ")}`, params);
   return {
@@ -290,21 +292,25 @@ async function getCustomer(userId) {
     return null;
   }
   return {
-    customer: mapCustomer({
-      id: row.user_id || row.id,
-      branch_id: row.branch_id,
-      branch_name: row.branch_name,
-      full_name: row.full_name,
-      email: row.email,
-      phone: row.phone,
-      status: row.status,
-      gender: row.gender,
-      nationality: row.nationality,
-      birth_date: row.birth_date,
-      city: row.city,
-      created_at: row.created_at,
-      updated_at: row.updated_at
-    }),
+    customer: {
+      ...mapCustomer({
+        id: row.user_id || row.id,
+        branch_id: row.branch_id,
+        branch_name: row.branch_name,
+        full_name: row.full_name,
+        email: row.email,
+        phone: row.phone,
+        status: row.status,
+        gender: row.gender,
+        nationality: row.nationality,
+        birth_date: row.birth_date,
+        city: row.city,
+        created_at: row.created_at,
+        updated_at: row.updated_at
+      }),
+      memberCode: row.member_code || null,
+      hasAvatar: Boolean(row.avatar_path)
+    },
     profile: {
       nationalId: row.national_id,
       passportNumber: row.passport_number,

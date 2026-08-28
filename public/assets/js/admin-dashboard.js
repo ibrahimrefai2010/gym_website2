@@ -167,22 +167,188 @@
         )
         .join("")
     );
+    renderMembers();
+  }
+
+  function renderMembers() {
+    const data = state.members || { items: [], pagination: {} };
+    const items = data.items || [];
+    if (!items.length) {
+      setHtml("#adminUsers", `<tr><td colspan="6">${escapeHtml(t("admin.memberNone"))}</td></tr>`);
+      setHtml("#memberPager", "");
+      return;
+    }
     setHtml(
       "#adminUsers",
-      users
+      items
         .map(
-          (user) => `
-            <tr>
-              <td>${escapeHtml(user.fullName)}</td>
-              <td>${escapeHtml(user.email)}</td>
-              <td>${escapeHtml(user.phone)}</td>
-              <td>${escapeHtml(user.plan || user.membership || "")}</td>
-              <td>${escapeHtml(statusLabel(user.status))}</td>
-            </tr>
-          `
+          (member) => `
+            <tr data-member-id="${escapeHtml(member.id)}" tabindex="0">
+              <td>${escapeHtml(member.memberCode || member.member_code || "—")}</td>
+              <td>${escapeHtml(member.fullName)}</td>
+              <td>${escapeHtml(member.email)}</td>
+              <td>${escapeHtml(member.phone || "")}</td>
+              <td>${escapeHtml(member.membershipPlan || member.membership || "—")}</td>
+              <td>${escapeHtml(statusLabel(member.status))}</td>
+            </tr>`
         )
         .join("")
     );
+
+    const page = data.pagination?.page || 1;
+    const total = data.pagination?.total || items.length;
+    const pageSize = data.pagination?.pageSize || 20;
+    const pages = Math.max(Math.ceil(total / pageSize), 1);
+    setHtml(
+      "#memberPager",
+      pages > 1
+        ? `<button class="btn small secondary" type="button" data-member-page="${page - 1}" ${page <= 1 ? "disabled" : ""}>${escapeHtml(t("portal.prev"))}</button>
+           <span>${escapeHtml(t("portal.pageLabel").replace("{n}", page))} / ${pages}</span>
+           <button class="btn small secondary" type="button" data-member-page="${page + 1}" ${page >= pages ? "disabled" : ""}>${escapeHtml(t("portal.next"))}</button>`
+        : ""
+    );
+  }
+
+  async function loadMembers(page = 1) {
+    const f = state.memberFilters || {};
+    const params = new URLSearchParams({ page: String(page), pageSize: "20" });
+    if (f.search) params.set("search", f.search);
+    if (f.status) params.set("status", f.status);
+    if (f.membershipStatus) params.set("membershipStatus", f.membershipStatus);
+    try {
+      state.members = await window.GymApi.request(`/api/v1/customers?${params.toString()}`);
+      state.membersMode = "full";
+    } catch (_error) {
+      try {
+        const basic = new URLSearchParams({ page: String(page), pageSize: "20" });
+        if (f.search) basic.set("search", f.search);
+        if (f.status) basic.set("status", f.status);
+        state.members = await window.GymApi.request(`/api/v1/users?${basic.toString()}`);
+        state.membersMode = "basic";
+      } catch (_error2) {
+        state.members = { items: [], pagination: {} };
+      }
+    }
+    renderMembers();
+  }
+
+  async function loadMemberDetail(memberId) {
+    const panel = document.querySelector("#memberDetail");
+    if (!panel || state.membersMode === "basic") {
+      return;
+    }
+    panel.hidden = false;
+    setMessage("#memberDetailMessage", t("portal.loading"), true);
+    try {
+      const detail = await window.GymApi.request(`/api/v1/customers/${encodeURIComponent(memberId)}`);
+      const c = detail.customer || {};
+      const p = detail.profile || {};
+      document.querySelector("#memberDetailName").textContent = c.fullName || "—";
+      const avatar = document.querySelector("#memberDetailAvatar");
+      if (avatar) {
+        avatar.innerHTML = c.hasAvatar
+          ? `<img src="/api/v1/users/${encodeURIComponent(memberId)}/avatar?t=${Date.now()}" alt="">`
+          : "";
+        avatar.textContent = c.hasAvatar ? "" : (c.fullName || "?").trim().slice(0, 2).toUpperCase();
+      }
+      const rows = [
+        [t("portal.field.memberId"), c.memberCode || "—"],
+        [t("field.email"), c.email || "—"],
+        [t("field.phone"), c.phone || "—"],
+        [t("portal.field.nationalId"), p.nationalId || "—"],
+        [t("portal.field.dob"), formatDate(c.birthDate) || "—"],
+        [t("portal.field.gender"), c.gender && c.gender !== "unspecified" ? t(`option.${c.gender}`) : "—"],
+        [t("portal.field.nationality"), c.nationality || "—"],
+        [t("portal.field.city"), c.city || "—"],
+        [t("table.status"), statusLabel(c.status)],
+        [t("portal.field.registered"), formatDate(c.createdAt)]
+      ];
+      setHtml(
+        "#memberDetailInfo",
+        rows.map(([k, v]) => `<div><dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd></div>`).join("")
+      );
+      setHtml(
+        "#memberDetailMemberships",
+        (detail.memberships || []).length
+          ? detail.memberships
+              .map(
+                (m) =>
+                  `<tr><td>${escapeHtml(m.plan_name || m.plan || "—")}</td><td>${formatDate(m.start_date)}</td><td>${formatDate(m.end_date)}</td><td>${escapeHtml(statusLabel(m.status))}</td></tr>`
+              )
+              .join("")
+          : `<tr><td>${escapeHtml(t("portal.membership.noHistory"))}</td></tr>`
+      );
+      setHtml(
+        "#memberDetailPayments",
+        (detail.payments || []).length
+          ? detail.payments
+              .map(
+                (pay) =>
+                  `<tr><td>${escapeHtml(money(pay.amount, pay.currency))}</td><td>${escapeHtml(pay.payment_method || "—")}</td><td>${escapeHtml(statusLabel(pay.status))}</td><td>${formatDate(pay.completed_at || pay.created_at)}</td></tr>`
+              )
+              .join("")
+          : `<tr><td>${escapeHtml(t("portal.payments.none"))}</td></tr>`
+      );
+      const contacts = detail.emergencyContacts || [];
+      setHtml(
+        "#memberDetailEmergency",
+        contacts.length
+          ? contacts
+              .map(
+                (ct) =>
+                  `<div><dt>${escapeHtml(ct.name)}${ct.relationship ? ` (${escapeHtml(ct.relationship)})` : ""}</dt><dd>${escapeHtml(ct.phone)}</dd></div>`
+              )
+              .join("")
+          : `<div><dt>—</dt><dd>${escapeHtml(t("portal.emergency.none"))}</dd></div>`
+      );
+      setMessage("#memberDetailMessage", "", true);
+    } catch (error) {
+      setMessage("#memberDetailMessage", error.message, false);
+    }
+  }
+
+  function setupMembers() {
+    state.memberFilters = { search: "", status: "", membershipStatus: "" };
+
+    document.querySelector("#memberFilterForm")?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      state.memberFilters = {
+        search: document.querySelector("#memberSearch")?.value.trim() || "",
+        status: document.querySelector("#memberStatusFilter")?.value || "",
+        membershipStatus: document.querySelector("#memberMembershipFilter")?.value || ""
+      };
+      loadMembers(1);
+    });
+
+    document.querySelector("#adminUsers")?.addEventListener("click", (event) => {
+      const row = event.target.closest("tr[data-member-id]");
+      if (row) {
+        loadMemberDetail(row.dataset.memberId);
+      }
+    });
+    document.querySelector("#adminUsers")?.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") {
+        return;
+      }
+      const row = event.target.closest("tr[data-member-id]");
+      if (row) {
+        loadMemberDetail(row.dataset.memberId);
+      }
+    });
+
+    document.querySelector("#memberPager")?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-member-page]");
+      if (button && !button.disabled) {
+        loadMembers(Number(button.dataset.memberPage));
+      }
+    });
+
+    document.querySelector("#memberDetailClose")?.addEventListener("click", () => {
+      const panel = document.querySelector("#memberDetail");
+      if (panel) {
+        panel.hidden = true;
+      }
+    });
   }
 
   function renderMemberships() {
@@ -744,6 +910,7 @@
         state.selectedMessageId = null;
       }
       renderAll();
+      loadMembers(1);
     } catch (_error) {
       window.GymApi.clearSession();
       window.location.href = "/login.html";
@@ -1576,6 +1743,7 @@
     setupRbacActions();
     setupExports();
     setupAnnounce();
+    setupMembers();
     setupSession();
     load();
     window.addEventListener("languagechange", renderAll);

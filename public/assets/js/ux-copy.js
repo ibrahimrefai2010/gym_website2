@@ -47,7 +47,23 @@
     "admin.announceRead": "Read",
     "admin.announceEmpty": "Nothing sent yet.",
     "admin.announceSent": "Sent to {n} member(s).",
-    "admin.announceIncomplete": "Title and message are required in both languages."
+    "admin.announceIncomplete": "Title and message are required in both languages.",
+    "admin.memberSearch": "Search by name, email, phone, or ID",
+    "admin.memberSearchBtn": "Search",
+    "admin.filterAnyStatus": "Any account status",
+    "admin.statusActive": "Active",
+    "admin.statusInactive": "Inactive",
+    "admin.statusSuspended": "Suspended",
+    "admin.filterAnyMembership": "Any membership",
+    "admin.mActive": "Active membership",
+    "admin.mPending": "Pending",
+    "admin.mExpired": "Expired",
+    "admin.mCancelled": "Cancelled",
+    "admin.memberDetail": "Member details",
+    "admin.close": "Close",
+    "admin.memberMemberships": "Memberships",
+    "admin.memberPayments": "Payments",
+    "admin.memberNone": "No members match."
   });
 
   Object.assign(window.GymI18n.dictionary.ar, {
@@ -94,6 +110,22 @@
     "admin.announceRead": "مقروءة",
     "admin.announceEmpty": "لم يتم إرسال أي شيء بعد.",
     "admin.announceSent": "أُرسلت إلى {n} عضو.",
-    "admin.announceIncomplete": "العنوان والرسالة مطلوبان باللغتين."
+    "admin.announceIncomplete": "العنوان والرسالة مطلوبان باللغتين.",
+    "admin.memberSearch": "بحث بالاسم أو البريد أو الجوال أو الهوية",
+    "admin.memberSearchBtn": "بحث",
+    "admin.filterAnyStatus": "كل حالات الحساب",
+    "admin.statusActive": "نشط",
+    "admin.statusInactive": "غير نشط",
+    "admin.statusSuspended": "موقوف",
+    "admin.filterAnyMembership": "كل العضويات",
+    "admin.mActive": "عضوية نشطة",
+    "admin.mPending": "قيد الانتظار",
+    "admin.mExpired": "منتهية",
+    "admin.mCancelled": "ملغاة",
+    "admin.memberDetail": "بيانات العضو",
+    "admin.close": "إغلاق",
+    "admin.memberMemberships": "العضويات",
+    "admin.memberPayments": "المدفوعات",
+    "admin.memberNone": "لا يوجد أعضاء مطابقون."
   });
 })();

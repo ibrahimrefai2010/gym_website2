@@ -118,10 +118,28 @@
               </div>
             </div>
             <p class="form-message" id="exportMembersMessage" aria-live="polite"></p>
+            <form class="member-filter" id="memberFilterForm">
+              <input type="search" id="memberSearch" name="search" data-i18n-placeholder="admin.memberSearch" placeholder="بحث بالاسم أو البريد أو الجوال أو الهوية">
+              <select id="memberStatusFilter" name="status">
+                <option value="" data-i18n="admin.filterAnyStatus">كل الحالات</option>
+                <option value="active" data-i18n="admin.statusActive">نشط</option>
+                <option value="inactive" data-i18n="admin.statusInactive">غير نشط</option>
+                <option value="suspended" data-i18n="admin.statusSuspended">موقوف</option>
+              </select>
+              <select id="memberMembershipFilter" name="membershipStatus">
+                <option value="" data-i18n="admin.filterAnyMembership">كل العضويات</option>
+                <option value="active" data-i18n="admin.mActive">عضوية نشطة</option>
+                <option value="pending" data-i18n="admin.mPending">قيد الانتظار</option>
+                <option value="expired" data-i18n="admin.mExpired">منتهية</option>
+                <option value="cancelled" data-i18n="admin.mCancelled">ملغاة</option>
+              </select>
+              <button class="btn small secondary" type="submit" data-i18n="admin.memberSearchBtn">بحث</button>
+            </form>
             <div class="table-shell">
               <table class="table">
                 <thead>
                   <tr>
+                    <th data-i18n="portal.field.memberId">رقم العضو</th>
                     <th data-i18n="table.member">العضو</th>
                     <th>البريد</th>
                     <th data-i18n="field.phone">الجوال</th>
@@ -132,6 +150,28 @@
                 <tbody id="adminUsers"></tbody>
               </table>
             </div>
+            <div class="pager" id="memberPager"></div>
+          </div>
+
+          <div class="admin-panel" id="memberDetail" hidden>
+            <div class="admin-panel-header">
+              <div class="inline-actions">
+                <span class="avatar avatar-sm" id="memberDetailAvatar" aria-hidden="true"></span>
+                <div>
+                  <p class="eyebrow" data-i18n="admin.memberDetail">بيانات العضو</p>
+                  <h2 id="memberDetailName">—</h2>
+                </div>
+              </div>
+              <button class="btn small secondary" type="button" id="memberDetailClose" data-i18n="admin.close">إغلاق</button>
+            </div>
+            <dl class="data-list" id="memberDetailInfo"></dl>
+            <h3 class="portal-section-title" data-i18n="admin.memberMemberships">العضويات</h3>
+            <div class="table-shell"><table class="table"><tbody id="memberDetailMemberships"></tbody></table></div>
+            <h3 class="portal-section-title" data-i18n="admin.memberPayments">المدفوعات</h3>
+            <div class="table-shell"><table class="table"><tbody id="memberDetailPayments"></tbody></table></div>
+            <h3 class="portal-section-title" data-i18n="portal.account.emergency">جهة اتصال للطوارئ</h3>
+            <dl class="data-list" id="memberDetailEmergency"></dl>
+            <p class="form-message" id="memberDetailMessage" aria-live="polite"></p>
           </div>
         </section>
 
@@ -578,7 +618,8 @@
 
     <script src="/assets/js/data.js"></script>
     <script src="/assets/js/i18n.js"></script>
-    <script src="/assets/js/ux-copy.js"></script>
+    <script src="/assets/js/ux-copy.js?v=2.2.0"></script>
+    <script src="/assets/js/portal-i18n.js?v=2.2.0"></script>
     <script src="/assets/js/api.js?v=2.2.0"></script>
     <script src="/assets/js/admin-dashboard.js?v=2.2.0"></script>
   </body>
