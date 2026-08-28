@@ -1,0 +1,15 @@
+* text=auto
+
+# Files that must keep LF line endings to work inside Linux containers
+*.sh text eol=lf
+Dockerfile text eol=lf
+Dockerfile.* text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+
+# Binary assets — never touch line endings
+*.png binary
+*.webp binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
