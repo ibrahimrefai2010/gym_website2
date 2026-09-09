@@ -1,5 +1,6 @@
 const memberPortalService = require("../services/memberPortalService");
 const memberPortalRepository = require("../repositories/memberPortalRepository");
+const invoicePdfService = require("../services/invoicePdfService");
 const notificationRepository = require("../repositories/notificationRepository");
 const sessionRepository = require("../repositories/sessionRepository");
 const avatarService = require("../services/avatarService");
@@ -169,6 +170,27 @@ async function paymentReceipt(req, res) {
   res.json({ success: true, data });
 }
 
+async function invoices(req, res) {
+  const data = await memberPortalRepository.listInvoices(req.user.id, {
+    page: positiveInteger(req.query.page, 1, 100000),
+    pageSize: positiveInteger(req.query.pageSize, 20, 50)
+  });
+  res.json({ success: true, data });
+}
+
+async function invoicePdf(req, res) {
+  const invoiceId = parsePositiveIntParam(req.params.id, "Invoice id");
+  const owned = await memberPortalRepository.invoiceBelongsToUser(req.user.id, invoiceId);
+  if (!owned) {
+    throw createHttpError(404, "Invoice not found.", "INVOICE_NOT_FOUND");
+  }
+  const buffer = await invoicePdfService.renderInvoicePdf(invoiceId);
+  await createLog("user", req.user.id, "member.invoice_pdf", "invoices", invoiceId, null, req.ip);
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `inline; filename="invoice-${invoiceId}.pdf"`);
+  res.send(buffer);
+}
+
 async function card(req, res) {
   const data = await memberPortalService.getCard(req.user.id);
   res.json({ success: true, data });
@@ -233,6 +255,8 @@ module.exports = {
   getAvatar,
   getNotificationPreferences,
   getProfile,
+  invoicePdf,
+  invoices,
   uploadAvatar,
   listSessions,
   markAllNotificationsRead,

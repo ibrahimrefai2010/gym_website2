@@ -297,6 +297,48 @@ async function getPayments(userId, { page = 1, pageSize = 20 } = {}) {
   };
 }
 
+async function listInvoices(userId, { page = 1, pageSize = 20 } = {}) {
+  ensureDatabase();
+  const limit = positiveInteger(pageSize, 20, 50);
+  const currentPage = positiveInteger(page, 1, 100000);
+  const offset = (currentPage - 1) * limit;
+  const rows = await query(
+    `SELECT id, invoice_number, status, issue_date, issued_at, total, tax_total,
+            paid_total, balance_due, currency
+     FROM invoices
+     WHERE user_id = ? AND deleted_at IS NULL
+     ORDER BY COALESCE(issued_at, issue_date) DESC, id DESC
+     LIMIT ${limit} OFFSET ${offset}`,
+    [userId]
+  );
+  const totalRows = await query(
+    "SELECT COUNT(*) AS total FROM invoices WHERE user_id = ? AND deleted_at IS NULL",
+    [userId]
+  );
+  return {
+    items: rows.map((row) => ({
+      id: row.id,
+      number: row.invoice_number,
+      status: row.status,
+      issueDate: row.issued_at || row.issue_date,
+      total: Number(row.total || 0),
+      taxTotal: Number(row.tax_total || 0),
+      balanceDue: Number(row.balance_due || 0),
+      currency: row.currency || "SAR"
+    })),
+    pagination: { page: currentPage, pageSize: limit, total: Number(totalRows[0]?.total || 0) }
+  };
+}
+
+async function invoiceBelongsToUser(userId, invoiceId) {
+  ensureDatabase();
+  const rows = await query(
+    "SELECT id FROM invoices WHERE id = ? AND user_id = ? AND deleted_at IS NULL LIMIT 1",
+    [invoiceId, userId]
+  );
+  return Boolean(rows[0]);
+}
+
 async function getPaymentReceipt(userId, paymentId) {
   ensureDatabase();
   const rows = await query(
@@ -424,6 +466,8 @@ module.exports = {
   getPaymentReceipt,
   getPayments,
   getProfile,
+  invoiceBelongsToUser,
+  listInvoices,
   updatePersonalInfo,
   upsertEmergencyContact
 };

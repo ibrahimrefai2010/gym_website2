@@ -18,6 +18,10 @@ router.get("/membership/history", asyncHandler(memberController.membershipHistor
 router.get("/payments", asyncHandler(memberController.payments));
 router.get("/payments/:id/receipt", asyncHandler(memberController.paymentReceipt));
 
+router.get("/invoices", asyncHandler(memberController.invoices));
+// GET /api/v1/user/invoices/:id/pdf is served by mediaRoutes (cookie fallback,
+// so a plain link / new-tab open works without an Authorization header).
+
 router.get("/card", asyncHandler(memberController.card));
 
 router.get("/notifications", asyncHandler(memberController.notifications));

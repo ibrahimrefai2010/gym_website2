@@ -9,6 +9,7 @@ const router = express.Router();
 // Image endpoints hit by plain <img src> — cannot carry an Authorization header,
 // so they accept the Bearer token when present and fall back to the refresh cookie.
 router.get("/user/avatar", authenticateMedia, asyncHandler(memberController.getAvatar));
+router.get("/user/invoices/:id/pdf", authenticateMedia, asyncHandler(memberController.invoicePdf));
 router.get(
   "/users/:id/avatar",
   authenticateMedia,

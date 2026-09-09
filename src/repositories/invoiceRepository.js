@@ -35,16 +35,32 @@ function ensureDatabase() {
 // invoice INSERT, so a rollback also rolls back the number -> no gaps, no reuse.
 async function allocateInvoiceNumber(connection, issuedAt) {
   const year = hijriYear(issuedAt);
+  // Bump (and create) the per-year counter; the upsert takes the row lock so
+  // concurrent creates serialise here.
   await connection.execute(
     `INSERT INTO invoice_counters (hijri_year, last_seq) VALUES (?, 1)
      ON DUPLICATE KEY UPDATE last_seq = last_seq + 1`,
     [year]
   );
-  const [rows] = await connection.execute(
+  const [ctrRows] = await connection.execute(
     "SELECT last_seq FROM invoice_counters WHERE hijri_year = ? FOR UPDATE",
     [year]
   );
-  const seq = Number(rows[0].last_seq);
+  let seq = Number(ctrRows[0].last_seq);
+
+  // Self-heal: if the counter fell behind the actual invoices (restore from
+  // backup, manual edit), jump ahead of the highest used sequence so we never
+  // hand out a number that already exists.
+  const [maxRows] = await connection.execute(
+    "SELECT COALESCE(MAX(invoice_seq), 0) AS max_seq FROM invoices WHERE hijri_year = ?",
+    [year]
+  );
+  const needed = Number(maxRows[0].max_seq) + 1;
+  if (needed > seq) {
+    seq = needed;
+    await connection.execute("UPDATE invoice_counters SET last_seq = ? WHERE hijri_year = ?", [seq, year]);
+  }
+
   return { year, seq, number: `INV-${year}-${String(seq).padStart(6, "0")}` };
 }
 
