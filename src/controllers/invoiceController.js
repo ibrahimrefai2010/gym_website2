@@ -1,4 +1,5 @@
 const invoiceRepository = require("../repositories/invoiceRepository");
+const invoicePdfService = require("../services/invoicePdfService");
 const { createHttpError } = require("../utils/httpError");
 const { createLog } = require("../utils/logger");
 const { cleanString, pagination, requireFields } = require("../utils/validator");
@@ -38,9 +39,28 @@ async function updateStatus(req, res) {
   res.json({ success: true, data });
 }
 
+async function overdue(req, res) {
+  const data = await invoiceRepository.overdueInvoices({
+    branchId: cleanString(req.query.branchId, 20),
+    asOf: cleanString(req.query.asOf, 20)
+  });
+  res.json({ success: true, data });
+}
+
+async function pdf(req, res) {
+  const buffer = await invoicePdfService.renderInvoicePdf(req.params.id);
+  await invoiceRepository.markPdfGenerated(req.params.id).catch(() => {});
+  await createLog("admin", req.user?.id, "invoice.pdf", "invoices", req.params.id, null, req.ip);
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `inline; filename="invoice-${req.params.id}.pdf"`);
+  res.send(buffer);
+}
+
 module.exports = {
   create,
   detail,
   list,
+  overdue,
+  pdf,
   updateStatus
 };

@@ -256,6 +256,42 @@ async function createInvoice(payload, adminId = null) {
   });
 }
 
+async function markPdfGenerated(id) {
+  ensureDatabase();
+  await query("UPDATE invoices SET pdf_generated_at = UTC_TIMESTAMP() WHERE id = ?", [id]);
+}
+
+// Members carrying an outstanding balance on a non-cancelled invoice, worst first.
+async function overdueInvoices({ branchId = "", asOf = "" } = {}) {
+  ensureDatabase();
+  const where = [
+    "i.deleted_at IS NULL",
+    "i.balance_due > 0",
+    "i.status IN ('pending','partial')"
+  ];
+  const params = [];
+  if (branchId) {
+    where.push("i.branch_id = ?");
+    params.push(branchId);
+  }
+  const cutoff = asOf || new Date().toISOString().slice(0, 10);
+  where.push("(i.due_date IS NULL OR i.due_date <= ?)");
+  params.push(cutoff);
+
+  const rows = await query(
+    `SELECT i.id, i.invoice_number, i.issue_date, i.due_date, i.total, i.paid_total,
+       i.balance_due, i.currency, u.id AS user_id, u.full_name AS customer, u.phone,
+       DATEDIFF(?, COALESCE(i.due_date, i.issue_date)) AS days_overdue
+     FROM invoices i
+     JOIN users u ON u.id = i.user_id
+     WHERE ${where.join(" AND ")}
+     ORDER BY i.balance_due DESC, days_overdue DESC`,
+    [cutoff, ...params]
+  );
+  const totalOutstanding = rows.reduce((sum, r) => sum + Number(r.balance_due), 0);
+  return { items: rows, totalOutstanding: round2(totalOutstanding), count: rows.length };
+}
+
 async function updateInvoiceStatus(id, status, adminId = null) {
   ensureDatabase();
   assertEnum(status, INVOICE_STATUSES, "Invoice status");
@@ -273,5 +309,7 @@ module.exports = {
   createInvoice,
   getInvoice,
   listInvoices,
+  markPdfGenerated,
+  overdueInvoices,
   updateInvoiceStatus
 };
