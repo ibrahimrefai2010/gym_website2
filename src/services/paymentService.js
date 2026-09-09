@@ -55,8 +55,8 @@ async function createStripeCheckoutSession({ user, plan, membershipId = null }) 
       planId: String(plan.id),
       membershipId: membershipId ? String(membershipId) : ""
     },
-    success_url: env.stripeSuccessUrl,
-    cancel_url: env.stripeCancelUrl
+    success_url: env.paymentSuccessUrl,
+    cancel_url: env.paymentCancelUrl
   });
 
   return {

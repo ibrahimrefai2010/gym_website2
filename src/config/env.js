@@ -41,6 +41,7 @@ const env = {
   jwtAccessExpiry: process.env.JWT_ACCESS_EXPIRY || "15m",
   jwtRefreshExpiry: process.env.JWT_REFRESH_EXPIRY || "7d",
   bcryptRounds: intEnv("BCRYPT_ROUNDS", 12),
+  adminIdleTimeoutMinutes: intEnv("ADMIN_IDLE_TIMEOUT_MINUTES", 480),
 
   smtpHost: process.env.SMTP_HOST || "",
   smtpPort: intEnv("SMTP_PORT", 587),
@@ -59,12 +60,32 @@ const env = {
   currency: "SAR",
   timezone: "Asia/Riyadh",
 
+  // Stripe was retired in favour of Moyasar. Kept dormant; not offered in the UI.
   stripeSecretKey: process.env.STRIPE_SECRET_KEY || "",
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || "",
-  stripeSuccessUrl:
-    process.env.STRIPE_SUCCESS_URL || "http://localhost:3000/user.html?payment=success",
-  stripeCancelUrl:
-    process.env.STRIPE_CANCEL_URL || "http://localhost:3000/user.html?payment=cancelled"
+
+  // Moyasar — the only online payment provider.
+  moyasarMode: (process.env.MOYASAR_MODE || "test").toLowerCase() === "live" ? "live" : "test",
+  moyasarSecretKey: process.env.MOYASAR_SECRET_KEY || "",
+  moyasarPublishableKey: process.env.MOYASAR_PUBLISHABLE_KEY || "",
+  moyasarWebhookSecret: process.env.MOYASAR_WEBHOOK_SECRET || "",
+  paymentSuccessUrl:
+    process.env.PAYMENT_SUCCESS_URL ||
+    process.env.STRIPE_SUCCESS_URL ||
+    "http://localhost:3000/user.html?payment=success",
+  paymentCancelUrl:
+    process.env.PAYMENT_CANCEL_URL ||
+    process.env.STRIPE_CANCEL_URL ||
+    "http://localhost:3000/user.html?payment=cancelled",
+
+  // Analytics / marketing tags — front end loads them only when set.
+  ga4MeasurementId: process.env.GA4_MEASUREMENT_ID || "",
+  metaPixelId: process.env.META_PIXEL_ID || "",
+
+  // Automated database backup.
+  backupCron: process.env.BACKUP_CRON || "",
+  backupRetentionDays: intEnv("BACKUP_RETENTION_DAYS", 14),
+  mysqldumpPath: process.env.MYSQLDUMP_PATH || "mysqldump"
 };
 
 if (env.nodeEnv === "production") {
