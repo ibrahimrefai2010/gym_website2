@@ -164,12 +164,13 @@ async function adminLogin({ identifier, password, ipAddress, userAgent }) {
     userAgent
   });
 
+  await adminRepository.recordLogin(admin.id, ipAddress);
   await createLog("admin", admin.id, "auth.login", "admin_users", admin.id, null, ipAddress);
 
   return {
     accessToken: tokens.accessToken,
     refreshToken: tokens.refreshToken,
-    user: responseAdmin(admin)
+    user: { ...responseAdmin(admin), mustChangePassword: Boolean(admin.must_change_password) }
   };
 }
 
@@ -211,13 +212,17 @@ async function refresh(refreshToken, context = {}) {
     subject,
     expiresAt: refreshExpiry(),
     ipAddress: context.ipAddress,
-    userAgent: context.userAgent
+    userAgent: context.userAgent,
+    idleLimitMs: subject.type === "admin" ? env.adminIdleTimeoutMinutes * 60 * 1000 : 0
   });
 
   return {
     accessToken,
     refreshToken: nextRefreshToken,
-    user: subject.type === "admin" ? responseAdmin(principal) : responseUser(principal)
+    user:
+      subject.type === "admin"
+        ? { ...responseAdmin(principal), mustChangePassword: Boolean(principal.must_change_password) }
+        : responseUser(principal)
   };
 }
 
@@ -330,8 +335,35 @@ async function resetPassword({ resetToken, password }, context = {}) {
   return { reset: true };
 }
 
+async function adminChangePassword({ adminId, currentPassword, newPassword }, context = {}) {
+  if (!currentPassword || !newPassword) {
+    throw createHttpError(400, "Current and new password are required.", "PASSWORD_FIELDS_REQUIRED");
+  }
+  assertStrongPassword(newPassword);
+
+  const admin = await adminRepository.findForLoginById(adminId);
+  if (!admin) {
+    throw createHttpError(401, "Session is no longer valid.", "SESSION_INVALID");
+  }
+
+  const matches = await verifyPassword(currentPassword, admin.password_hash);
+  if (!matches) {
+    throw createHttpError(401, "Current password is incorrect.", "CURRENT_PASSWORD_INVALID");
+  }
+  if (await verifyPassword(newPassword, admin.password_hash)) {
+    throw createHttpError(422, "New password must be different from the current one.", "PASSWORD_UNCHANGED");
+  }
+
+  await adminRepository.updatePassword(adminId, newPassword);
+  await tokenRepository.revokeAllRefreshTokens({ id: adminId, type: "admin" });
+  await createLog("admin", adminId, "auth.password_change", "admin_users", adminId, null, context.ipAddress);
+
+  return { changed: true };
+}
+
 module.exports = {
   REFRESH_MAX_AGE_MS,
+  adminChangePassword,
   adminLogin,
   forgotPassword,
   login,

@@ -38,30 +38,51 @@ async function expireMemberships() {
   );
 }
 
+// Renewal reminders fire once at 7, 3, and 1 day before expiry. The job runs
+// daily and each membership crosses each threshold on exactly one day, so no
+// de-duplication is needed.
+const RENEWAL_REMINDER_DAYS = [7, 3, 1];
+
+function renewalReminderCopy(days) {
+  if (days === 1) {
+    return {
+      titleAr: "تذكير أخير بتجديد العضوية",
+      titleEn: "Final membership renewal reminder",
+      bodyAr: "يتبقى يوم واحد على انتهاء عضويتك. جدّد الآن لتفادي انقطاع الوصول.",
+      bodyEn: "Your membership expires tomorrow. Renew now to avoid a gap in access."
+    };
+  }
+  return {
+    titleAr: "تذكير بتجديد العضوية",
+    titleEn: "Membership renewal reminder",
+    bodyAr: `تبقى ${days} أيام على انتهاء عضويتك.`,
+    bodyEn: `Your membership expires in ${days} days.`
+  };
+}
+
 async function renewalReminders() {
   if (!hasDatabaseConfig()) return;
 
-  const rows = await query(
-    `SELECT id, user_id
-     FROM memberships
-     WHERE end_date = UTC_DATE() + INTERVAL 7 DAY AND status = 'active'`
-  );
+  for (const days of RENEWAL_REMINDER_DAYS) {
+    const rows = await query(
+      `SELECT id, user_id
+       FROM memberships
+       WHERE end_date = UTC_DATE() + INTERVAL ? DAY AND status = 'active'`,
+      [days]
+    );
+    if (rows.length === 0) continue;
 
-  await Promise.all(
-    rows.map((row) =>
-      query(
-        `INSERT INTO notifications (user_id, type, title_ar, title_en, body_ar, body_en)
-         VALUES (?, 'renewal_reminder', ?, ?, ?, ?)`,
-        [
-          row.user_id,
-          "تذكير بتجديد العضوية",
-          "Membership renewal reminder",
-          "تبقى 7 أيام على انتهاء عضويتك.",
-          "Your membership expires in 7 days."
-        ]
+    const copy = renewalReminderCopy(days);
+    await Promise.all(
+      rows.map((row) =>
+        query(
+          `INSERT INTO notifications (user_id, type, title_ar, title_en, body_ar, body_en)
+           VALUES (?, 'renewal_reminder', ?, ?, ?, ?)`,
+          [row.user_id, copy.titleAr, copy.titleEn, copy.bodyAr, copy.bodyEn]
+        )
       )
-    )
-  );
+    );
+  }
 }
 
 async function cleanExpiredOtps() {

@@ -32,7 +32,8 @@ async function authenticate(req, _res, next) {
     req.user = {
       id: Number(payload.sub),
       type: payload.type,
-      role: payload.type === "admin" ? principal.role : "member"
+      role: payload.type === "admin" ? principal.role : "member",
+      mustChangePassword: payload.type === "admin" ? Boolean(principal.must_change_password) : false
     };
     return next();
   } catch (error) {
@@ -72,7 +73,8 @@ async function authenticateMedia(req, _res, next) {
     req.user = {
       id: Number(payload.sub),
       type: payload.type,
-      role: payload.type === "admin" ? principal.role : "member"
+      role: payload.type === "admin" ? principal.role : "member",
+      mustChangePassword: payload.type === "admin" ? Boolean(principal.must_change_password) : false
     };
     return next();
   } catch (error) {
@@ -93,6 +95,17 @@ function requireRole(...roles) {
 function requireAdmin(req, _res, next) {
   if (!req.user || req.user.type !== "admin") {
     return next(createHttpError(403, "Administrator access is required.", "ADMIN_REQUIRED"));
+  }
+
+  // First-login gate: an admin flagged for a forced password change may only
+  // reach the change-password endpoint until it is done.
+  if (req.user.mustChangePassword) {
+    const path = String(req.originalUrl || "").split("?")[0];
+    if (!path.endsWith("/admin/auth/change-password")) {
+      return next(
+        createHttpError(403, "You must change your password before continuing.", "PASSWORD_CHANGE_REQUIRED")
+      );
+    }
   }
 
   return next();

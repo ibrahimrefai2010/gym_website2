@@ -5,7 +5,11 @@ const { hashPassword } = require("../src/utils/hash");
 const email = process.env.ADMIN_EMAIL || "admin@localhost.test";
 const fullName = process.env.ADMIN_FULL_NAME || "System Administrator";
 const phone = process.env.ADMIN_PHONE || null;
+const providedPassword = Boolean(process.env.ADMIN_PASSWORD);
 const password = process.env.ADMIN_PASSWORD || crypto.randomBytes(18).toString("base64url");
+// A generated password is shown once on the console -> force a change on first
+// login. An operator-chosen ADMIN_PASSWORD is trusted as-is.
+const mustChangePassword = providedPassword ? 0 : 1;
 
 async function ensureAdmin() {
   if (!hasDatabaseConfig()) {
@@ -28,15 +32,18 @@ async function ensureAdmin() {
   }
 
   const result = await query(
-    `INSERT INTO admin_users (full_name, email, phone, password_hash, role, status)
-     VALUES (?, ?, ?, ?, 'super_admin', 'active')`,
-    [fullName, email.toLowerCase(), phone, await hashPassword(password)]
+    `INSERT INTO admin_users (full_name, email, phone, password_hash, role, status, must_change_password)
+     VALUES (?, ?, ?, ?, 'super_admin', 'active', ?)`,
+    [fullName, email.toLowerCase(), phone, await hashPassword(password), mustChangePassword]
   );
 
   process.stdout.write("Created super admin account:\n");
   process.stdout.write(`- id: ${result.insertId}\n`);
   process.stdout.write(`- email: ${email.toLowerCase()}\n`);
   process.stdout.write(`- password: ${password}\n`);
+  if (mustChangePassword) {
+    process.stdout.write("- note: a password change is required on first login.\n");
+  }
 }
 
 ensureAdmin()

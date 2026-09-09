@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const { env } = require("../config/env");
 
@@ -18,7 +19,10 @@ function signRefreshToken(subject) {
     {
       sub: Number(subject.id),
       type: subject.type,
-      role: subject.type === "admin" ? subject.role : null
+      role: subject.type === "admin" ? subject.role : null,
+      // Unique per issue so two tokens minted in the same second (e.g. login
+      // immediately followed by a refresh) never collide on token_hash.
+      jti: crypto.randomBytes(16).toString("hex")
     },
     env.jwtRefreshSecret,
     { expiresIn: env.jwtRefreshExpiry }

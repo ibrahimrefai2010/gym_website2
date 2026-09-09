@@ -24,7 +24,9 @@ function publicAdmin(row) {
     phone: row.phone,
     role: row.role,
     type: "admin",
-    status: row.status
+    status: row.status,
+    mustChangePassword: Boolean(row.must_change_password),
+    lastLoginAt: row.last_login_at || null
   };
 }
 
@@ -32,7 +34,7 @@ async function findForLogin(identifier) {
   ensureDatabase();
   const normalized = String(identifier || "").trim().toLowerCase();
   const rows = await query(
-    `SELECT id, full_name, email, phone, role, status, password_hash
+    `SELECT id, full_name, email, phone, role, status, password_hash, must_change_password, last_login_at
      FROM admin_users
      WHERE deleted_at IS NULL AND LOWER(email) = ?
      LIMIT 1`,
@@ -44,13 +46,41 @@ async function findForLogin(identifier) {
 async function findById(id) {
   ensureDatabase();
   const rows = await query(
-    `SELECT id, full_name, email, phone, role, status
+    `SELECT id, full_name, email, phone, role, status, must_change_password, last_login_at
      FROM admin_users
      WHERE id = ? AND deleted_at IS NULL
      LIMIT 1`,
     [id]
   );
   return rows[0] || null;
+}
+
+async function findForLoginById(id) {
+  ensureDatabase();
+  const rows = await query(
+    `SELECT id, password_hash, must_change_password
+     FROM admin_users
+     WHERE id = ? AND deleted_at IS NULL
+     LIMIT 1`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
+async function recordLogin(id, ipAddress = null) {
+  ensureDatabase();
+  await query(
+    "UPDATE admin_users SET last_login_at = UTC_TIMESTAMP(), last_login_ip = ? WHERE id = ?",
+    [ipAddress || null, id]
+  );
+}
+
+async function updatePassword(id, plainPassword) {
+  ensureDatabase();
+  await query(
+    "UPDATE admin_users SET password_hash = ?, must_change_password = 0, updated_at = UTC_TIMESTAMP() WHERE id = ?",
+    [await hashPassword(plainPassword), id]
+  );
 }
 
 async function createAdmin(payload) {
@@ -365,7 +395,10 @@ module.exports = {
   createAdmin,
   findById,
   findForLogin,
+  findForLoginById,
   getOverview,
+  recordLogin,
+  updatePassword,
   listBroadcasts,
   listResource,
   publicAdmin,

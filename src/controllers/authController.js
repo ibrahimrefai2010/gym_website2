@@ -79,7 +79,21 @@ async function adminLogin(req, res) {
   sendSession(res, result);
 }
 
+async function adminChangePassword(req, res) {
+  const data = await authService.adminChangePassword(
+    {
+      adminId: req.user.id,
+      currentPassword: req.body.currentPassword,
+      newPassword: req.body.newPassword || req.body.nextPassword
+    },
+    { ipAddress: req.ip }
+  );
+  clearRefreshCookie(res);
+  res.json({ success: true, data });
+}
+
 module.exports = {
+  adminChangePassword,
   adminLogin,
   forgotPassword,
   login,

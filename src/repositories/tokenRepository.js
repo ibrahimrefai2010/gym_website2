@@ -19,10 +19,10 @@ async function createRefreshToken({ token, subject, expiresAt, ipAddress, userAg
   const executor = connection || { execute: async (sql, params) => [await query(sql, params)] };
   const sql =
     subject.type === "admin"
-      ? `INSERT INTO refresh_tokens (admin_user_id, token_hash, expires_at, ip_address, user_agent)
-         VALUES (?, ?, ?, ?, ?)`
-      : `INSERT INTO refresh_tokens (user_id, token_hash, expires_at, ip_address, user_agent)
-         VALUES (?, ?, ?, ?, ?)`;
+      ? `INSERT INTO refresh_tokens (admin_user_id, token_hash, expires_at, ip_address, user_agent, last_used_at)
+         VALUES (?, ?, ?, ?, ?, UTC_TIMESTAMP())`
+      : `INSERT INTO refresh_tokens (user_id, token_hash, expires_at, ip_address, user_agent, last_used_at)
+         VALUES (?, ?, ?, ?, ?, UTC_TIMESTAMP())`;
   const [result] = await executor.execute(sql, [
     subject.id,
     tokenHash(token),
@@ -80,11 +80,12 @@ async function revokeAllRefreshTokens(subject, connection = null) {
   );
 }
 
-async function rotateRefreshToken({ oldToken, newToken, subject, expiresAt, ipAddress, userAgent }) {
+async function rotateRefreshToken({ oldToken, newToken, subject, expiresAt, ipAddress, userAgent, idleLimitMs = 0 }) {
   ensureDatabase();
   const outcome = await transaction(async (connection) => {
     const [rows] = await connection.execute(
-      `SELECT id, revoked_at, expires_at
+      `SELECT id, revoked_at, expires_at,
+        TIMESTAMPDIFF(SECOND, last_used_at, UTC_TIMESTAMP()) AS idle_seconds
        FROM refresh_tokens
        WHERE token_hash = ?
        LIMIT 1
@@ -107,6 +108,14 @@ async function rotateRefreshToken({ oldToken, newToken, subject, expiresAt, ipAd
       return { expired: true };
     }
 
+    // Idle-session timeout (admins): if this session has not been used within the
+    // allowed window, retire it and force a fresh login. Compared entirely in
+    // SQL (UTC vs UTC) so it is independent of the driver's date handling.
+    if (idleLimitMs > 0 && current.idle_seconds != null && current.idle_seconds * 1000 > idleLimitMs) {
+      await revokeRefreshTokenByHash(oldToken, connection);
+      return { idle: true };
+    }
+
     await revokeRefreshTokenByHash(oldToken, connection);
     await createRefreshToken({ token: newToken, subject, expiresAt, ipAddress, userAgent }, connection);
     return { rotated: true };
@@ -114,6 +123,9 @@ async function rotateRefreshToken({ oldToken, newToken, subject, expiresAt, ipAd
 
   if (outcome.reused) {
     throw createHttpError(401, "Refresh token reuse detected. All refresh tokens were revoked.", "REFRESH_REUSED");
+  }
+  if (outcome.idle) {
+    throw createHttpError(401, "Session ended after inactivity. Please sign in again.", "SESSION_IDLE_TIMEOUT");
   }
   if (outcome.expired || outcome.invalid) {
     throw createHttpError(401, "Refresh token is invalid or expired.", "REFRESH_INVALID");
