@@ -1,6 +1,26 @@
 const { hasDatabaseConfig, query, transaction } = require("../config/database");
 const { createHttpError } = require("../utils/httpError");
 const { assertEnum, positiveInteger } = require("../utils/validator");
+const { hijriYear } = require("../utils/hijri");
+const { buildZatcaQrBase64 } = require("../utils/zatcaQr");
+const businessSettingsRepository = require("./businessSettingsRepository");
+
+const round2 = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+
+async function resolveBuyer(payload) {
+  const name = payload.buyerName ? String(payload.buyerName).trim().slice(0, 200) : null;
+  const phone = payload.buyerPhone ? String(payload.buyerPhone).trim().slice(0, 40) : null;
+  const vatNumber = payload.buyerVatNumber ? String(payload.buyerVatNumber).trim().slice(0, 20) : null;
+  if (name && phone) {
+    return { name, phone, vatNumber };
+  }
+  const rows = await query("SELECT full_name, phone FROM users WHERE id = ? LIMIT 1", [payload.userId]);
+  return {
+    name: name || rows[0]?.full_name || null,
+    phone: phone || rows[0]?.phone || null,
+    vatNumber
+  };
+}
 
 const INVOICE_STATUSES = ["draft", "pending", "paid", "partial", "cancelled", "refunded"];
 
@@ -10,9 +30,22 @@ function ensureDatabase() {
   }
 }
 
-function invoiceNumber() {
-  const stamp = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
-  return `INV-${stamp}-${Math.floor(1000 + Math.random() * 9000)}`;
+// ZATCA requires a gap-free sequence. Owner decision: reset per Hijri year.
+// The counter row is locked and incremented inside the same transaction as the
+// invoice INSERT, so a rollback also rolls back the number -> no gaps, no reuse.
+async function allocateInvoiceNumber(connection, issuedAt) {
+  const year = hijriYear(issuedAt);
+  await connection.execute(
+    `INSERT INTO invoice_counters (hijri_year, last_seq) VALUES (?, 1)
+     ON DUPLICATE KEY UPDATE last_seq = last_seq + 1`,
+    [year]
+  );
+  const [rows] = await connection.execute(
+    "SELECT last_seq FROM invoice_counters WHERE hijri_year = ? FOR UPDATE",
+    [year]
+  );
+  const seq = Number(rows[0].last_seq);
+  return { year, seq, number: `INV-${year}-${String(seq).padStart(6, "0")}` };
 }
 
 function lineTotals(item) {
@@ -125,28 +158,59 @@ async function createInvoice(payload, adminId = null) {
   }
 
   const prepared = items.map((item) => ({ ...item, totals: lineTotals(item) }));
-  const subtotal = prepared.reduce((sum, item) => sum + item.totals.quantity * item.totals.unitPrice, 0);
-  const discountTotal = prepared.reduce((sum, item) => sum + item.totals.discount, 0);
-  const taxTotal = prepared.reduce((sum, item) => sum + item.totals.taxAmount, 0);
-  const total = prepared.reduce((sum, item) => sum + item.totals.lineTotal, 0);
-  const paidTotal = Number(payload.paidTotal || 0);
-  const balanceDue = Math.max(total - paidTotal, 0);
+  const subtotal = round2(prepared.reduce((sum, item) => sum + item.totals.quantity * item.totals.unitPrice, 0));
+  const discountTotal = round2(prepared.reduce((sum, item) => sum + item.totals.discount, 0));
+  const taxTotal = round2(prepared.reduce((sum, item) => sum + item.totals.taxAmount, 0));
+  const total = round2(prepared.reduce((sum, item) => sum + item.totals.lineTotal, 0));
+  const paidTotal = round2(Number(payload.paidTotal || 0));
+  const balanceDue = Math.max(round2(total - paidTotal), 0);
   const status = payload.status || (paidTotal >= total ? "paid" : paidTotal > 0 ? "partial" : "pending");
 
+  const issuedAt = payload.issuedAt ? new Date(payload.issuedAt) : new Date();
+  const issueDate = payload.issueDate || issuedAt.toISOString().slice(0, 10);
+
+  // ZATCA Phase 1 QR — seller identity comes from business_settings.
+  const seller = await businessSettingsRepository.get();
+  if (!seller || !/^\d{15}$/.test(String(seller.vatNumber || ""))) {
+    throw createHttpError(
+      422,
+      "Set the 15-digit VAT number in Admin -> Settings -> Business Info before issuing invoices.",
+      "BUSINESS_VAT_NOT_CONFIGURED"
+    );
+  }
+  const zatcaQr = buildZatcaQrBase64({
+    sellerName: seller.legalEntityNameAr || seller.legalEntityNameEn,
+    vatNumber: seller.vatNumber,
+    timestamp: issuedAt,
+    invoiceTotal: total,
+    vatTotal: taxTotal
+  });
+
+  const buyer = await resolveBuyer(payload);
+
   return transaction(async (connection) => {
+    const allocated = payload.invoiceNumber
+      ? { number: payload.invoiceNumber, year: null, seq: null }
+      : await allocateInvoiceNumber(connection, issuedAt);
+
     const [result] = await connection.execute(
       `INSERT INTO invoices
-        (branch_id, user_id, membership_id, invoice_number, status, issue_date, due_date,
+        (branch_id, user_id, membership_id, invoice_number, status, issue_date, issued_at,
+         hijri_year, invoice_seq, due_date,
          subtotal, discount_total, tax_total, total, paid_total, balance_due, currency,
+         buyer_name, buyer_phone, buyer_vat_number, zatca_qr,
          notes, metadata, created_by, updated_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         payload.branchId || 1,
         payload.userId,
         payload.membershipId || null,
-        payload.invoiceNumber || invoiceNumber(),
+        allocated.number,
         status,
-        payload.issueDate || new Date().toISOString().slice(0, 10),
+        issueDate,
+        issuedAt.toISOString().slice(0, 19).replace("T", " "),
+        allocated.year,
+        allocated.seq,
         payload.dueDate || null,
         subtotal,
         discountTotal,
@@ -155,6 +219,10 @@ async function createInvoice(payload, adminId = null) {
         paidTotal,
         balanceDue,
         payload.currency || "SAR",
+        buyer.name,
+        buyer.phone,
+        buyer.vatNumber,
+        zatcaQr,
         payload.notes || null,
         payload.metadata ? JSON.stringify(payload.metadata) : null,
         adminId,
@@ -184,7 +252,7 @@ async function createInvoice(payload, adminId = null) {
         ]
       );
     }
-    return { id: result.insertId };
+    return { id: result.insertId, invoiceNumber: allocated.number };
   });
 }
 
