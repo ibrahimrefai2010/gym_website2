@@ -1,6 +1,7 @@
 const messageRepository = require("../repositories/messageRepository");
+const taskService = require("../services/taskService");
 const { assertEmail, assertEnum, assertMaxLength, cleanEmail, cleanPhone, cleanString, requireFields } = require("../utils/validator");
-const { auditLog } = require("../utils/logger");
+const { auditLog, appLogger } = require("../utils/logger");
 
 async function create(req, res) {
   if (cleanString(req.body.website, 120)) {
@@ -26,6 +27,17 @@ async function create(req, res) {
     description: "New contact message",
     ipAddress: req.ip
   });
+  // Tasks/Follow-ups auto-generation trigger 2: a follow-up task for the new
+  // lead, gated by the branch's task_autogen_new_leads setting (see
+  // taskService.createTaskForNewLead). messages has no branch_id column of
+  // its own (left un-branch-scoped by design -- see
+  // adminRepository.getOverview's comment), so the branch comes from
+  // req.branch instead -- the same subdomain-resolved signal
+  // middleware/branchResolver.js attaches to every request, public or not.
+  // Best-effort: must never fail the contact-form submission itself.
+  taskService
+    .createTaskForNewLead(data, req.branch?.id)
+    .catch((error) => appLogger.error({ error, messageId: data.id }, "Task autogen (new lead) failed"));
   res.status(201).json({ success: true, data });
 }
 

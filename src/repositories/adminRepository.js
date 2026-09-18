@@ -8,6 +8,7 @@ const messageRepository = require("./messageRepository");
 const settingsRepository = require("./settingsRepository");
 const sliderRepository = require("./sliderRepository");
 const rbacRepository = require("./rbacRepository");
+const taskRepository = require("./taskRepository");
 
 function ensureDatabase() {
   if (!hasDatabaseConfig()) {
@@ -128,7 +129,7 @@ async function createAdmin(payload) {
 // not by oversight.
 async function getOverview(branchId = 1) {
   ensureDatabase();
-  const [statsRows, users, payments, logs, messages, memberships, adminAccounts, notifications] =
+  const [statsRows, users, payments, logs, messages, memberships, adminAccounts, notifications, tasksByPriority, overdueTasks] =
     await Promise.all([
       query(
         `SELECT
@@ -186,7 +187,11 @@ async function getOverview(branchId = 1) {
         [branchId]
       ),
       // notifications has no branch_id column (only user_id) -- left global.
-      query("SELECT id, type, title_en, title_ar, is_read, created_at FROM notifications ORDER BY created_at DESC LIMIT 10")
+      query("SELECT id, type, title_en, title_ar, is_read, created_at FROM notifications ORDER BY created_at DESC LIMIT 10"),
+      // Tasks/Follow-ups "Open Tasks" dashboard widget (count by priority +
+      // overdue count), branch-scope aware like everything else here.
+      taskRepository.countOpenByPriority({ branchId }),
+      taskRepository.countOverdue({ branchId })
     ]);
 
   const stats = statsRows[0] || {};
@@ -215,6 +220,10 @@ async function getOverview(branchId = 1) {
       plan: user.plan || "None"
     })),
     memberships,
+    tasks: {
+      byPriority: tasksByPriority,
+      overdue: overdueTasks
+    },
     payments: payments.map((payment) => ({
       id: payment.id,
       member: payment.member || "Unknown",

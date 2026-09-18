@@ -30,6 +30,7 @@ const documentRoutes = require("./routes/documentRoutes");
 const reportRoutes = require("./routes/reportRoutes");
 const searchRoutes = require("./routes/searchRoutes");
 const aiRoutes = require("./routes/aiRoutes");
+const taskRoutes = require("./routes/taskRoutes");
 
 const app = express();
 const publicDir = path.join(__dirname, "..", "public");
@@ -149,6 +150,7 @@ app.use("/api/v1/documents", documentRoutes);
 app.use("/api/v1/reports", reportRoutes);
 app.use("/api/v1/search", searchRoutes);
 app.use("/api/v1/ai", aiRoutes);
+app.use("/api/v1/tasks", taskRoutes);
 app.use("/api/v1", mediaRoutes);
 app.use("/api/v1/user", authenticate, memberRoutes);
 app.use("/api/v1/user", authenticate, userRoutes);

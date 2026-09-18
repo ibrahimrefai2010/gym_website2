@@ -1,6 +1,7 @@
 const cron = require("node-cron");
 const { hasDatabaseConfig, query } = require("../config/database");
 const tokenRepository = require("../repositories/tokenRepository");
+const taskService = require("../services/taskService");
 const { appLogger } = require("../utils/logger");
 const { env } = require("../config/env");
 
@@ -64,10 +65,17 @@ async function renewalReminders() {
   if (!hasDatabaseConfig()) return;
 
   for (const days of RENEWAL_REMINDER_DAYS) {
+    // branch_id/full_name/plan name are pulled here (not re-queried inside
+    // taskService) purely so the auto-created task's title/description can
+    // reference the member and plan by name -- see
+    // taskService.createTaskForExpiringMembership, the Tasks/Follow-ups
+    // auto-generation hook for this same 7/3/1-day trigger.
     const rows = await query(
-      `SELECT id, user_id
-       FROM memberships
-       WHERE end_date = UTC_DATE() + INTERVAL ? DAY AND status = 'active'`,
+      `SELECT m.id, m.user_id, m.branch_id, m.end_date, u.full_name AS user_full_name, p.name_en AS plan_name
+       FROM memberships m
+       JOIN users u ON u.id = m.user_id
+       LEFT JOIN plans p ON p.id = m.plan_id
+       WHERE m.end_date = UTC_DATE() + INTERVAL ? DAY AND m.status = 'active'`,
       [days]
     );
     if (rows.length === 0) continue;
@@ -80,6 +88,29 @@ async function renewalReminders() {
            VALUES (?, 'renewal_reminder', ?, ?, ?, ?)`,
           [row.user_id, copy.titleAr, copy.titleEn, copy.bodyAr, copy.bodyEn]
         )
+      )
+    );
+
+    // Tasks/Follow-ups auto-generation trigger 1: one follow-up task per
+    // membership crossing this threshold, gated by the branch's
+    // task_autogen_expiring_memberships setting (defaults to enabled -- see
+    // taskService.js). Best-effort: a failure here must never break the
+    // notification insert above or the rest of the cron run.
+    await Promise.all(
+      rows.map((row) =>
+        taskService
+          .createTaskForExpiringMembership(
+            {
+              id: row.id,
+              userId: row.user_id,
+              branchId: row.branch_id,
+              endDate: row.end_date,
+              userFullName: row.user_full_name,
+              planName: row.plan_name
+            },
+            days
+          )
+          .catch((error) => appLogger.error({ error, membershipId: row.id }, "Task autogen (expiring membership) failed"))
       )
     );
   }
