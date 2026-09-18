@@ -5,6 +5,7 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const { env } = require("./config/env");
 const { authenticate, requireAdmin } = require("./middleware/auth");
+const { resolveBranch } = require("./middleware/branchResolver");
 const { errorHandler, notFound } = require("./middleware/errorHandler");
 const publicRoutes = require("./routes/publicRoutes");
 const authRoutes = require("./routes/authRoutes");
@@ -80,8 +81,31 @@ const otpLimiter = rateLimit({
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
 
+// Subdomain branch routing (women.<domain> vs the bare domain) means the app
+// may need to allow more than one origin. CORS_ORIGIN can be a single URL or
+// a comma-separated list (see .env.example); a list gets a validating
+// origin-callback instead of a bare string.
+const allowedOrigins = String(env.corsOrigin || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const corsOptions =
+  allowedOrigins.length > 1
+    ? {
+        origin(origin, callback) {
+          // No Origin header (curl, server-to-server, same-origin) -- allow.
+          if (!origin || allowedOrigins.includes(origin)) {
+            return callback(null, true);
+          }
+          return callback(new Error("Not allowed by CORS"));
+        },
+        credentials: true
+      }
+    : { origin: allowedOrigins[0] || env.corsOrigin, credentials: true };
+
 app.use(helmet());
-app.use(cors({ origin: env.corsOrigin, credentials: true }));
+app.use(cors(corsOptions));
 app.use("/api/v1/payments/webhook", express.raw({ type: "application/json", limit: "100kb" }));
 app.use("/api/v1/admin/uploads/images", express.json({ limit: "6mb" }));
 app.use("/api/v1/user/avatar", express.json({ limit: "3mb" }));
@@ -98,6 +122,13 @@ app.use(
     maxAge: env.nodeEnv === "production" ? "1h" : 0
   })
 );
+
+// Resolves req.branch = {id, code} for public/unauthenticated routes from
+// the request subdomain (see middleware/branchResolver.js). Mounted before
+// every public route that needs it (bootstrap, public plan/offer listings,
+// register). Authenticated routes ignore req.branch entirely -- they use
+// req.user.branchId instead, set by authenticate() from the DB principal.
+app.use(resolveBranch);
 
 app.use("/api/v1/public", publicRoutes);
 app.use("/api/v1/auth", authRoutes);
