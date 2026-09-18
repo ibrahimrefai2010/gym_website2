@@ -41,6 +41,7 @@ const PERMISSIONS = [
   { key: "leads:read", category: "CRM", description: "View leads and follow-up notes." },
   { key: "leads:write", category: "CRM", description: "Assign, update, note, convert, and export leads." },
   { key: "checkin:manage", category: "Operations", description: "Run reception check-in, view the daily log, and check-in analytics." },
+  { key: "tasks:manage", category: "Operations", description: "Create, assign, update, close, and cancel tasks/follow-ups." },
   { key: "tax_reports:read", category: "Reports", description: "View internal VAT and Zakat worksheets (admin/accountant only)." },
   { key: "employees:manage", category: "Operations", description: "Manage employee profiles, documents, leaves, salary, commission, and performance." },
   { key: "attendance:manage", category: "Operations", description: "Manage attendance and QR check-ins." },
@@ -110,6 +111,7 @@ const businessManagerPermissions = [
   "branches:manage",
   "attendance:manage",
   "checkin:manage",
+  "tasks:manage",
   "qr:manage",
   "pool:manage",
   "equipment:manage",
@@ -141,6 +143,7 @@ const branchManagerPermissions = [
   "employees:manage",
   "attendance:manage",
   "checkin:manage",
+  "tasks:manage",
   "qr:manage",
   "pool:manage",
   "equipment:manage"
@@ -168,6 +171,7 @@ const DEFAULT_ROLE_PERMISSIONS = {
     "cash_register:manage",
     "attendance:manage",
     "checkin:manage",
+    "tasks:manage",
     "qr:manage",
     "messages:write",
     "leads:read",
@@ -204,6 +208,7 @@ const DEFAULT_ROLE_PERMISSIONS = {
     "notifications:manage",
     "messages:write",
     "leads:read",
+    "tasks:manage",
     "reports:read"
   ],
   customer_support: [
@@ -213,7 +218,8 @@ const DEFAULT_ROLE_PERMISSIONS = {
     "memberships:read",
     "messages:write",
     "notifications:manage",
-    "documents:manage"
+    "documents:manage",
+    "tasks:manage"
   ],
   maintenance: ["dashboard:read", "pool:manage", "equipment:manage"],
   staff: ["users:read", "messages:write", "payments:read"]
