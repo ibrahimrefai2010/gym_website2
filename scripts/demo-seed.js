@@ -1,11 +1,29 @@
-// Idempotent demo content: one member with a populated portal (membership,
-// history, a payment, notifications, profile + emergency contact) so every
-// section of the member area shows real data on a fresh demo instance.
+// Idempotent demo content: one member per branch with a populated portal
+// (membership, history, a payment, notifications, profile + emergency
+// contact) so every section of the member area shows real data on a fresh
+// demo instance.
+//
+// Both demo accounts intentionally use the SAME email (demo@muscle-fitness.local).
+// This is deliberate, not an oversight: `users` uniqueness is now
+// (branch_id, email) instead of a global-unique email (see migration
+// 202609180001_women_branch), so the same email can hold a separate account
+// per branch. Reusing it here doubles as a live demonstration that the
+// composite-uniqueness constraint actually works -- log into Main and
+// Women's branch with the identical email and land on two distinct member
+// accounts/portals.
 const { getPool, hasDatabaseConfig, query } = require("../src/config/database");
 const { hashPassword } = require("../src/utils/hash");
 
 const DEMO_EMAIL = "demo@muscle-fitness.local";
 const DEMO_PASSWORD = "Demo@12345";
+
+const BRANCHES = [
+  { code: "main", phone: "0500000000" },
+  // Distinct phone: phone is also (branch_id, phone) unique, but using two
+  // different placeholder numbers keeps each demo account trivially
+  // distinguishable in admin lists even though the email is shared.
+  { code: "women", phone: "0500000001" }
+];
 
 async function tableExists(name) {
   const rows = await query(
@@ -15,22 +33,29 @@ async function tableExists(name) {
   return Number(rows[0]?.c || 0) > 0;
 }
 
-async function seedDemo() {
-  if (!hasDatabaseConfig()) {
-    throw new Error("Database is not configured.");
+async function resolveBranchId(code) {
+  const rows = await query("SELECT id FROM branches WHERE code = ? LIMIT 1", [code]);
+  if (!rows[0]) {
+    throw new Error(`Branch code='${code}' not found -- run the relevant migration first.`);
   }
+  return rows[0].id;
+}
 
-  const existing = await query("SELECT id FROM users WHERE email = ? LIMIT 1", [DEMO_EMAIL]);
+async function seedDemoForBranch(branchCode, phone) {
+  const branchId = await resolveBranchId(branchCode);
+
+  const existing = await query("SELECT id FROM users WHERE branch_id = ? AND email = ? LIMIT 1", [branchId, DEMO_EMAIL]);
   if (existing[0]) {
-    process.stdout.write(`Demo member already present (user #${existing[0].id}).\n`);
+    process.stdout.write(`Demo member already present for branch '${branchCode}' (user #${existing[0].id}).\n`);
     return;
   }
 
   const planRows = await query(
-    "SELECT id FROM plans WHERE deleted_at IS NULL ORDER BY sort_order ASC, id ASC LIMIT 2"
+    "SELECT id FROM plans WHERE branch_id = ? AND deleted_at IS NULL ORDER BY sort_order ASC, id ASC LIMIT 2",
+    [branchId]
   );
   if (!planRows[0]) {
-    process.stdout.write("No plans found; run db:seed first. Skipping demo member.\n");
+    process.stdout.write(`No plans found for branch '${branchCode}'; run db:seed first. Skipping demo member.\n`);
     return;
   }
   const planA = planRows[0].id;
@@ -38,9 +63,9 @@ async function seedDemo() {
 
   const passwordHash = await hashPassword(DEMO_PASSWORD);
   const userResult = await query(
-    `INSERT INTO users (full_name, email, phone, password_hash, status)
-     VALUES ('Demo Member', ?, '0500000000', ?, 'active')`,
-    [DEMO_EMAIL, passwordHash]
+    `INSERT INTO users (branch_id, full_name, email, phone, password_hash, status)
+     VALUES (?, 'Demo Member', ?, ?, ?, 'active')`,
+    [branchId, DEMO_EMAIL, phone, passwordHash]
   );
   const userId = userResult.insertId;
 
@@ -85,8 +110,8 @@ async function seedDemo() {
 
   await query(
     `INSERT INTO payments (user_id, membership_id, provider, payment_method, transaction_id, amount, currency, status, completed_at)
-     VALUES (?, ?, 'manual', 'cash', 'DEMO-0001', ?, 'SAR', 'completed', DATE_SUB(UTC_TIMESTAMP(), INTERVAL 20 DAY))`,
-    [userId, activeMembership.insertId, amount]
+     VALUES (?, ?, 'manual', 'cash', ?, ?, 'SAR', 'completed', DATE_SUB(UTC_TIMESTAMP(), INTERVAL 20 DAY))`,
+    [userId, activeMembership.insertId, `DEMO-${branchCode.toUpperCase()}-0001`, amount]
   );
 
   const notifications = [
@@ -132,7 +157,17 @@ async function seedDemo() {
     );
   }
 
-  process.stdout.write(`Created demo member #${userId} (${DEMO_EMAIL} / ${DEMO_PASSWORD}).\n`);
+  process.stdout.write(`Created demo member #${userId} for branch '${branchCode}' (${DEMO_EMAIL} / ${DEMO_PASSWORD}).\n`);
+}
+
+async function seedDemo() {
+  if (!hasDatabaseConfig()) {
+    throw new Error("Database is not configured.");
+  }
+
+  for (const { code, phone } of BRANCHES) {
+    await seedDemoForBranch(code, phone);
+  }
 }
 
 seedDemo()
