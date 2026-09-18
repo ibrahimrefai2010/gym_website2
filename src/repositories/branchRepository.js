@@ -69,6 +69,24 @@ async function getBranch(id) {
   return rows[0] ? mapBranch(rows[0]) : null;
 }
 
+// Used by the branch-switching security path (src/security/branchAccess.js)
+// to validate a client-supplied branch id before honoring it -- never trusts
+// the id is real/active just because it parses as a positive integer.
+async function isActiveBranchId(id) {
+  if (!hasDatabaseConfig()) {
+    return false;
+  }
+  const branchId = Number(id);
+  if (!Number.isInteger(branchId) || branchId < 1) {
+    return false;
+  }
+  const rows = await query(
+    "SELECT id FROM branches WHERE id = ? AND status = 'active' AND deleted_at IS NULL LIMIT 1",
+    [branchId]
+  );
+  return Boolean(rows[0]);
+}
+
 async function saveBranch(payload, adminId = null) {
   ensureDatabase();
   if (payload.status) {
@@ -141,6 +159,7 @@ async function deleteBranch(id, adminId = null) {
 module.exports = {
   deleteBranch,
   getBranch,
+  isActiveBranchId,
   listBranches,
   saveBranch
 };

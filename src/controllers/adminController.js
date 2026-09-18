@@ -6,6 +6,7 @@ const { env } = require("../config/env");
 const { assertSaudiPhone, assertStrongPassword, cleanEmail, cleanPhone, cleanString, requireFields } = require("../utils/validator");
 const { createLog } = require("../utils/logger");
 const rbacRepository = require("../repositories/rbacRepository");
+const { resolveWriteBranchId } = require("../security/branchAccess");
 
 const writePermissions = {
   plans: "plans:write",
@@ -41,7 +42,7 @@ const readPermissions = {
 };
 
 async function overview(req, res) {
-  const data = await adminRepository.getOverview();
+  const data = await adminRepository.getOverview(req.effectiveBranchId || req.user?.branchId || 1);
   const checks = await Promise.all(
     [
       ["users", "users:read"],
@@ -70,7 +71,7 @@ async function list(req, res) {
     throw createHttpError(403, "Your admin role cannot access this resource.", "PERMISSION_DENIED");
   }
 
-  const data = await adminRepository.listResource(req.params.resource, req.user?.branchId || 1);
+  const data = await adminRepository.listResource(req.params.resource, req.effectiveBranchId || req.user?.branchId || 1);
   res.json({ success: true, data });
 }
 
@@ -83,17 +84,21 @@ async function save(req, res) {
   }
 
   if (resource === "plans") {
-    data = await adminRepository.savePlan({ ...req.body, branchId: req.body.branchId || req.user?.branchId });
-    await createLog("admin", req.user?.id, req.body.id ? "plan.update" : "plan.create", "plans", data?.id || req.body.id || null, null, req.ip);
+    const branchId = await resolveWriteBranchId(req, req.body.branchId);
+    data = await adminRepository.savePlan({ ...req.body, branchId });
+    await createLog("admin", req.user?.id, req.body.id ? "plan.update" : "plan.create", "plans", data?.id || req.body.id || null, null, req.ip, branchId);
   } else if (resource === "offers") {
-    data = await adminRepository.saveOffer({ ...req.body, branchId: req.body.branchId || req.user?.branchId });
-    await createLog("admin", req.user?.id, req.body.id ? "offer.update" : "offer.create", "offers", data?.id || req.body.id || null, null, req.ip);
+    const branchId = await resolveWriteBranchId(req, req.body.branchId);
+    data = await adminRepository.saveOffer({ ...req.body, branchId });
+    await createLog("admin", req.user?.id, req.body.id ? "offer.update" : "offer.create", "offers", data?.id || req.body.id || null, null, req.ip, branchId);
   } else if (resource === "settings") {
-    data = await adminRepository.saveSetting(req.body, req.user?.id, req.body.branchId || req.user?.branchId);
-    await createLog("admin", req.user?.id, "settings.update", "settings", null, { key: data.key }, req.ip);
+    const branchId = await resolveWriteBranchId(req, req.body.branchId);
+    data = await adminRepository.saveSetting(req.body, req.user?.id, branchId);
+    await createLog("admin", req.user?.id, "settings.update", "settings", null, { key: data.key }, req.ip, branchId);
   } else if (resource === "siteImages") {
-    data = await adminRepository.saveSiteImages(req.body, req.user?.id, req.body.branchId || req.user?.branchId);
-    await createLog("admin", req.user?.id, "settings.images.update", "settings", null, null, req.ip);
+    const branchId = await resolveWriteBranchId(req, req.body.branchId);
+    data = await adminRepository.saveSiteImages(req.body, req.user?.id, branchId);
+    await createLog("admin", req.user?.id, "settings.images.update", "settings", null, null, req.ip, branchId);
   } else if (resource === "slides") {
     data = await adminRepository.saveSlide(req.body);
     await createLog("admin", req.user?.id, req.body.id ? "slide.update" : "slide.create", "slider_images", data?.id || null, null, req.ip);

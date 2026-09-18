@@ -6,6 +6,7 @@ const rateLimit = require("express-rate-limit");
 const { env } = require("./config/env");
 const { authenticate, requireAdmin } = require("./middleware/auth");
 const { resolveBranch } = require("./middleware/branchResolver");
+const { attachEffectiveBranch } = require("./middleware/adminBranchScope");
 const { errorHandler, notFound } = require("./middleware/errorHandler");
 const publicRoutes = require("./routes/publicRoutes");
 const authRoutes = require("./routes/authRoutes");
@@ -152,7 +153,7 @@ app.use("/api/v1", mediaRoutes);
 app.use("/api/v1/user", authenticate, memberRoutes);
 app.use("/api/v1/user", authenticate, userRoutes);
 app.use("/api/v1/users", authenticate, requireAdmin, userRoutes);
-app.use("/api/v1/admin", authenticate, requireAdmin, adminRoutes);
+app.use("/api/v1/admin", authenticate, requireAdmin, attachEffectiveBranch, adminRoutes);
 
 app.get("/", (_req, res) => {
   res.sendFile(path.join(publicDir, "index.html"));

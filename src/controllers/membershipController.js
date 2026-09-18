@@ -1,8 +1,8 @@
 const membershipRepository = require("../repositories/membershipRepository");
 const membershipService = require("../services/membershipService");
 
-async function list(_req, res) {
-  const data = await membershipRepository.listMemberships();
+async function list(req, res) {
+  const data = await membershipRepository.listMemberships(req.effectiveBranchId || req.user?.branchId || null);
   res.json({ success: true, data });
 }
 

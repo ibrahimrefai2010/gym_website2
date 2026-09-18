@@ -29,11 +29,16 @@ function normalizePayload(body) {
 }
 
 async function list(req, res) {
+  // branchId is server-derived (req.effectiveBranchId, set by
+  // attachEffectiveBranch) rather than taken from the query string -- a
+  // client-supplied ?branchId= was previously honored as-is with no auth
+  // check at all, letting any admin view another branch's customers. See
+  // src/security/branchAccess.js for how effectiveBranchId is resolved.
   const data = await customerRepository.listCustomers({
     ...pagination(req.query),
     search: cleanString(req.query.search, 120),
     status: cleanString(req.query.status, 20),
-    branchId: cleanString(req.query.branchId, 20),
+    branchId: req.effectiveBranchId || "",
     gender: cleanString(req.query.gender, 20),
     nationality: cleanString(req.query.nationality, 80),
     membershipStatus: cleanString(req.query.membershipStatus, 20)

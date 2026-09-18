@@ -1,4 +1,5 @@
 const offerRepository = require("../repositories/offerRepository");
+const { resolveWriteBranchId } = require("../security/branchAccess");
 const { createLog } = require("../utils/logger");
 
 // Public route (no auth) -- branch comes from req.branch (subdomain), set by
@@ -9,20 +10,22 @@ async function list(req, res) {
 }
 
 // Admin routes (authenticated); see planController.create for the same
-// branchId-wiring note (full RBAC enforcement is a later phase).
+// branchId-resolution note.
 async function create(req, res) {
-  const data = await offerRepository.saveOffer({ ...req.body, branchId: req.body.branchId || req.user?.branchId });
-  await createLog("admin", req.user?.id, "offer.create", "offers", data.id, null, req.ip);
+  const branchId = await resolveWriteBranchId(req, req.body.branchId);
+  const data = await offerRepository.saveOffer({ ...req.body, branchId });
+  await createLog("admin", req.user?.id, "offer.create", "offers", data.id, null, req.ip, branchId);
   res.status(201).json({ success: true, data });
 }
 
 async function update(req, res) {
+  const branchId = await resolveWriteBranchId(req, req.body.branchId);
   const data = await offerRepository.saveOffer({
     ...req.body,
     id: req.params.id,
-    branchId: req.body.branchId || req.user?.branchId
+    branchId
   });
-  await createLog("admin", req.user?.id, "offer.update", "offers", req.params.id, null, req.ip);
+  await createLog("admin", req.user?.id, "offer.update", "offers", req.params.id, null, req.ip, branchId);
   res.json({ success: true, data });
 }
 

@@ -24,9 +24,14 @@ async function expireMemberships() {
   await query("UPDATE memberships SET status = 'expired', updated_at = UTC_TIMESTAMP() WHERE end_date < UTC_DATE() AND status = 'active'");
 }
 
-async function listMemberships() {
+async function listMemberships(branchId = null) {
   ensureDatabase();
   await expireMemberships();
+  // memberships has its own branch_id column (not derived via a join to
+  // users) -- same authoritative-column pattern invoiceRepository.listInvoices
+  // uses for i.branch_id.
+  const where = branchId ? "WHERE m.branch_id = ?" : "";
+  const params = branchId ? [branchId] : [];
   const rows = await query(
     `SELECT m.id, u.full_name AS member, p.name_en AS plan, m.start_date, m.end_date,
       DATEDIFF(m.end_date, UTC_DATE()) AS remaining_days, m.status,
@@ -41,8 +46,10 @@ async function listMemberships() {
        GROUP BY membership_id
      ) latest_pay ON latest_pay.membership_id = m.id
      LEFT JOIN payments pay ON pay.id = latest_pay.latest_payment_id
+     ${where}
      ORDER BY COALESCE(m.end_date, m.created_at) DESC
-     LIMIT 100`
+     LIMIT 100`,
+    params
   );
 
   return rows.map((row) => ({
@@ -89,15 +96,33 @@ async function buy({ userId, planId, paymentMethod = "manual", provider = "manua
     throw createHttpError(404, "Plan not found.", "PLAN_NOT_FOUND");
   }
 
+  // A plan belongs to exactly one branch (NOT NULL branch_id, see
+  // 202609180001_women_branch.up.sql). Without this check a user could end
+  // up with a membership tied to a plan from a branch they don't belong to.
+  const userRows = await query(
+    "SELECT branch_id FROM users WHERE id = ? AND deleted_at IS NULL LIMIT 1",
+    [userId]
+  );
+  const userBranchId = userRows[0]?.branch_id != null ? Number(userRows[0].branch_id) : null;
+  if (userBranchId == null) {
+    throw createHttpError(404, "User not found.", "USER_NOT_FOUND");
+  }
+  if (Number(plan.branchId) !== userBranchId) {
+    throw createHttpError(409, "This plan is not available for your branch.", "PLAN_BRANCH_MISMATCH");
+  }
+
   if (await activeMembership(userId)) {
     throw createHttpError(409, "You already have an active membership. Please contact the gym to renew.", "ACTIVE_MEMBERSHIP_EXISTS");
   }
 
   return transaction(async (connection) => {
+    // branch_id is set explicitly from the user's own branch rather than
+    // relying on the column default (DEFAULT 1), so a Women's-branch
+    // member's membership row is never silently tagged Main.
     const [membershipResult] = await connection.execute(
-      `INSERT INTO memberships (user_id, plan_id, status)
-       VALUES (?, ?, 'pending')`,
-      [userId, planId]
+      `INSERT INTO memberships (user_id, plan_id, branch_id, status)
+       VALUES (?, ?, ?, 'pending')`,
+      [userId, planId, userBranchId]
     );
 
     const [paymentResult] = await connection.execute(

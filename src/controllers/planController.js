@@ -1,4 +1,5 @@
 const planRepository = require("../repositories/planRepository");
+const { resolveWriteBranchId } = require("../security/branchAccess");
 const { createLog } = require("../utils/logger");
 
 // Public route (no auth) -- branch comes from req.branch (subdomain), set by
@@ -8,24 +9,26 @@ async function list(req, res) {
   res.json({ success: true, data });
 }
 
-// Admin routes (authenticated) -- branch comes from the plan payload if the
-// admin specified one, else defaults to the admin's own branch. Full
-// cross-branch RBAC enforcement (e.g. restricting a branch-scoped admin from
-// writing another branch's plans) is a later phase; this only wires the
-// required branchId field through.
+// Admin routes (authenticated). branchId resolution is security-critical: a
+// non-switching admin's writes are always forced to their own branch
+// (req.user.branchId), regardless of what the client sends -- a
+// branches:manage/super_admin admin may target another real, active branch.
+// See src/security/branchAccess.js#resolveWriteBranchId.
 async function create(req, res) {
-  const data = await planRepository.savePlan({ ...req.body, branchId: req.body.branchId || req.user?.branchId });
-  await createLog("admin", req.user?.id, "plan.create", "plans", data.id, null, req.ip);
+  const branchId = await resolveWriteBranchId(req, req.body.branchId);
+  const data = await planRepository.savePlan({ ...req.body, branchId });
+  await createLog("admin", req.user?.id, "plan.create", "plans", data.id, null, req.ip, branchId);
   res.status(201).json({ success: true, data });
 }
 
 async function update(req, res) {
+  const branchId = await resolveWriteBranchId(req, req.body.branchId);
   const data = await planRepository.savePlan({
     ...req.body,
     id: req.params.id,
-    branchId: req.body.branchId || req.user?.branchId
+    branchId
   });
-  await createLog("admin", req.user?.id, "plan.update", "plans", req.params.id, null, req.ip);
+  await createLog("admin", req.user?.id, "plan.update", "plans", req.params.id, null, req.ip, branchId);
   res.json({ success: true, data });
 }
 

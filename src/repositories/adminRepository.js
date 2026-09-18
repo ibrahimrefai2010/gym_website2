@@ -26,7 +26,17 @@ function publicAdmin(row) {
     type: "admin",
     status: row.status,
     mustChangePassword: Boolean(row.must_change_password),
-    lastLoginAt: row.last_login_at || null
+    lastLoginAt: row.last_login_at || null,
+    // Frontend needs this to know the admin's home branch (for the badge)
+    // and whether to show the branch switcher (role check is a client-side
+    // convenience only -- see src/security/branchAccess.js for the real,
+    // server-side enforcement). branchCode/branchName come from the join
+    // below so a branch-scoped admin (who typically lacks branches:manage
+    // and therefore can't call GET /api/v1/branches) can still render their
+    // own branch's name on the badge.
+    branchId: row.branch_id != null ? Number(row.branch_id) : null,
+    branchCode: row.branch_code || null,
+    branchName: row.branch_code ? { en: row.branch_name_en || "", ar: row.branch_name_ar || "" } : null
   };
 }
 
@@ -34,9 +44,12 @@ async function findForLogin(identifier) {
   ensureDatabase();
   const normalized = String(identifier || "").trim().toLowerCase();
   const rows = await query(
-    `SELECT id, branch_id, full_name, email, phone, role, status, password_hash, must_change_password, last_login_at
-     FROM admin_users
-     WHERE deleted_at IS NULL AND LOWER(email) = ?
+    `SELECT au.id, au.branch_id, au.full_name, au.email, au.phone, au.role, au.status,
+       au.password_hash, au.must_change_password, au.last_login_at,
+       b.code AS branch_code, b.name_en AS branch_name_en, b.name_ar AS branch_name_ar
+     FROM admin_users au
+     LEFT JOIN branches b ON b.id = au.branch_id
+     WHERE au.deleted_at IS NULL AND LOWER(au.email) = ?
      LIMIT 1`,
     [normalized]
   );
@@ -46,9 +59,12 @@ async function findForLogin(identifier) {
 async function findById(id) {
   ensureDatabase();
   const rows = await query(
-    `SELECT id, branch_id, full_name, email, phone, role, status, must_change_password, last_login_at
-     FROM admin_users
-     WHERE id = ? AND deleted_at IS NULL
+    `SELECT au.id, au.branch_id, au.full_name, au.email, au.phone, au.role, au.status,
+       au.must_change_password, au.last_login_at,
+       b.code AS branch_code, b.name_en AS branch_name_en, b.name_ar AS branch_name_ar
+     FROM admin_users au
+     LEFT JOIN branches b ON b.id = au.branch_id
+     WHERE au.id = ? AND au.deleted_at IS NULL
      LIMIT 1`,
     [id]
   );
@@ -106,51 +122,70 @@ async function createAdmin(payload) {
   }
 }
 
-async function getOverview() {
+// branchId scopes every branch-aware query below to one branch's data --
+// see the report for which of these tables genuinely have no branch_id
+// column (messages, notifications) and are therefore left global by design,
+// not by oversight.
+async function getOverview(branchId = 1) {
   ensureDatabase();
   const [statsRows, users, payments, logs, messages, memberships, adminAccounts, notifications] =
     await Promise.all([
       query(
         `SELECT
-          (SELECT COUNT(*) FROM users WHERE deleted_at IS NULL) AS total_users,
-          (SELECT COUNT(*) FROM memberships WHERE status = 'active') AS active_members,
-          (SELECT COUNT(*) FROM memberships WHERE status = 'expired') AS expired_members,
-          (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = 'completed' AND completed_at >= UTC_TIMESTAMP() - INTERVAL 30 DAY) AS monthly_revenue,
-          (SELECT COUNT(*) FROM payments WHERE status = 'pending') AS pending_payments,
+          (SELECT COUNT(*) FROM users WHERE deleted_at IS NULL AND branch_id = ?) AS total_users,
+          (SELECT COUNT(*) FROM memberships WHERE status = 'active' AND branch_id = ?) AS active_members,
+          (SELECT COUNT(*) FROM memberships WHERE status = 'expired' AND branch_id = ?) AS expired_members,
+          (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = 'completed' AND branch_id = ? AND completed_at >= UTC_TIMESTAMP() - INTERVAL 30 DAY) AS monthly_revenue,
+          (SELECT COUNT(*) FROM payments WHERE status = 'pending' AND branch_id = ?) AS pending_payments,
           (SELECT COUNT(*) FROM messages WHERE status = 'unread') AS unread_messages,
-          (SELECT COUNT(*) FROM users WHERE DATE(created_at) = UTC_DATE() AND deleted_at IS NULL) AS todays_new_users,
-          (SELECT COUNT(*) FROM notifications WHERE is_read = 0) AS open_notifications`
+          (SELECT COUNT(*) FROM users WHERE DATE(created_at) = UTC_DATE() AND deleted_at IS NULL AND branch_id = ?) AS todays_new_users,
+          (SELECT COUNT(*) FROM notifications WHERE is_read = 0) AS open_notifications`,
+        [branchId, branchId, branchId, branchId, branchId, branchId]
       ),
       query(
         `SELECT u.id, u.full_name, u.email, u.phone, u.status, p.name_en AS plan
          FROM users u
          LEFT JOIN memberships m ON m.user_id = u.id AND m.status = 'active'
          LEFT JOIN plans p ON p.id = m.plan_id
-         WHERE u.deleted_at IS NULL
+         WHERE u.deleted_at IS NULL AND u.branch_id = ?
          ORDER BY u.created_at DESC
-         LIMIT 8`
+         LIMIT 8`,
+        [branchId]
       ),
       query(
         `SELECT p.id, u.full_name AS member, p.amount, p.currency, p.payment_method, p.status, p.created_at, p.completed_at
          FROM payments p
          LEFT JOIN users u ON u.id = p.user_id
+         WHERE p.branch_id = ?
          ORDER BY p.created_at DESC
-         LIMIT 8`
+         LIMIT 8`,
+        [branchId]
       ),
+      // logs.branch_id is nullable and, today, only populated by the write
+      // paths this feature threads a branchId through (plan/offer/settings
+      // saves) -- most other actions across the app still log branch_id =
+      // NULL. Treating NULL as "not yet branch-tagged, visible everywhere"
+      // avoids a regression where every branch-scoped admin would otherwise
+      // see zero historical logs. See report for the full explanation.
       query(
         `SELECT id, actor_type, action, target_table, target_id, meta, created_at
          FROM logs
+         WHERE branch_id = ? OR branch_id IS NULL
          ORDER BY created_at DESC
-         LIMIT 10`
+         LIMIT 10`,
+        [branchId]
       ),
+      // messages (contact-form leads) has no branch_id column -- left global.
       query("SELECT id, name, email, phone, subject, status, created_at FROM messages ORDER BY created_at DESC LIMIT 10"),
-      membershipRepository.listMemberships(),
+      membershipRepository.listMemberships(branchId),
       query(
         `SELECT id, full_name AS username, email, role, created_at
          FROM admin_users
-         WHERE deleted_at IS NULL
-         ORDER BY created_at DESC`
+         WHERE deleted_at IS NULL AND branch_id = ?
+         ORDER BY created_at DESC`,
+        [branchId]
       ),
+      // notifications has no branch_id column (only user_id) -- left global.
       query("SELECT id, type, title_en, title_ar, is_read, created_at FROM notifications ORDER BY created_at DESC LIMIT 10")
     ]);
 
@@ -205,6 +240,16 @@ async function getOverview() {
   };
 }
 
+// Resources filtered by branchId below are grouped by whether the
+// underlying table actually has a branch_id column (see report for the
+// full audit):
+//  - Has branch_id, now filtered: plans, offers, settings, siteImages,
+//    slides (nullable branch_id -- includes both branch-specific and
+//    global-fallback rows), users, memberships (own branch_id column, not
+//    joined through users), payments, adminAccounts, logs (nullable, see
+//    getOverview's comment on why NULL rows stay visible everywhere).
+//  - Genuinely has no branch_id column, left unfiltered by design:
+//    messages (contact-form leads), notifications (only has user_id).
 async function listResource(resource, branchId = 1) {
   ensureDatabase();
   if (resource === "roles") return rbacRepository.listRoles();
@@ -212,38 +257,62 @@ async function listResource(resource, branchId = 1) {
   if (resource === "adminRoleAssignments") return rbacRepository.listAdminRoleAssignments();
   if (resource === "notificationBroadcasts") return listBroadcasts();
 
-  const queries = {
-    plans:
-      "SELECT id, name_en, name_ar, price, original_price, duration_days, bonus_days, is_featured, sort_order, is_active FROM plans WHERE deleted_at IS NULL ORDER BY sort_order ASC, id DESC",
-    offers:
-      "SELECT id, title_en, title_ar, image_url, discount_value, expires_at, sort_order, is_active FROM offers WHERE deleted_at IS NULL ORDER BY sort_order ASC, id DESC",
-    users: "SELECT id, full_name, email, phone, status, created_at FROM users WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 50",
-    memberships:
-      `SELECT m.id, u.full_name AS member, p.name_en AS plan, m.start_date, m.end_date, m.status
-       FROM memberships m JOIN users u ON u.id = m.user_id JOIN plans p ON p.id = m.plan_id
-       ORDER BY COALESCE(m.end_date, m.created_at) DESC LIMIT 50`,
-    messages: "SELECT id, name, email, phone, subject, status, created_at FROM messages ORDER BY created_at DESC LIMIT 50",
-    payments:
-      "SELECT id, user_id, membership_id, amount, currency, payment_method, provider, status, created_at, completed_at FROM payments ORDER BY created_at DESC LIMIT 50",
-    logs: "SELECT id, actor_type, actor_id, action, target_table, target_id, meta, ip_address, created_at FROM logs ORDER BY created_at DESC LIMIT 50",
-    settings: "SELECT key_name, value, type, label_en, label_ar FROM settings ORDER BY key_name ASC",
-    adminAccounts:
-      "SELECT id, full_name AS username, email, role, created_at FROM admin_users WHERE deleted_at IS NULL ORDER BY created_at DESC",
-    notifications: "SELECT id, user_id, type, title_en, title_ar, is_read, created_at FROM notifications ORDER BY created_at DESC LIMIT 50"
-  };
-
-  if (resource === "plans") return planRepository.listPlans({ includeInactive: true });
-  if (resource === "offers") return offerRepository.listOffers({ includeInactive: true });
+  if (resource === "plans") return planRepository.listPlans({ includeInactive: true, branchId });
+  if (resource === "offers") return offerRepository.listOffers({ includeInactive: true, branchId });
   if (resource === "settings") return settingsRepository.listSettings(branchId);
   if (resource === "siteImages") return settingsRepository.settingsToBootstrap(await settingsRepository.publicSettings(branchId)).siteImages;
-  if (resource === "slides") return sliderRepository.listSlides({ includeInactive: true });
+  if (resource === "slides") return sliderRepository.listSlides({ includeInactive: true, branchId });
   if (resource === "messages") return messageRepository.listMessages();
 
-  if (!queries[resource]) {
-    throw createHttpError(404, "Resource not found.", "RESOURCE_NOT_FOUND");
+  if (resource === "users") {
+    return query(
+      "SELECT id, full_name, email, phone, status, created_at FROM users WHERE deleted_at IS NULL AND branch_id = ? ORDER BY created_at DESC LIMIT 50",
+      [branchId]
+    );
+  }
+  if (resource === "memberships") {
+    return query(
+      `SELECT m.id, u.full_name AS member, p.name_en AS plan, m.start_date, m.end_date, m.status
+       FROM memberships m JOIN users u ON u.id = m.user_id JOIN plans p ON p.id = m.plan_id
+       WHERE m.branch_id = ?
+       ORDER BY COALESCE(m.end_date, m.created_at) DESC LIMIT 50`,
+      [branchId]
+    );
+  }
+  if (resource === "payments") {
+    return query(
+      `SELECT id, user_id, membership_id, amount, currency, payment_method, provider, status, created_at, completed_at
+       FROM payments
+       WHERE branch_id = ?
+       ORDER BY created_at DESC LIMIT 50`,
+      [branchId]
+    );
+  }
+  if (resource === "logs") {
+    return query(
+      `SELECT id, actor_type, actor_id, action, target_table, target_id, meta, ip_address, created_at
+       FROM logs
+       WHERE branch_id = ? OR branch_id IS NULL
+       ORDER BY created_at DESC LIMIT 50`,
+      [branchId]
+    );
+  }
+  if (resource === "adminAccounts") {
+    return query(
+      `SELECT id, full_name AS username, email, role, created_at
+       FROM admin_users
+       WHERE deleted_at IS NULL AND branch_id = ?
+       ORDER BY created_at DESC`,
+      [branchId]
+    );
+  }
+  if (resource === "notifications") {
+    return query(
+      "SELECT id, user_id, type, title_en, title_ar, is_read, created_at FROM notifications ORDER BY created_at DESC LIMIT 50"
+    );
   }
 
-  return query(queries[resource]);
+  throw createHttpError(404, "Resource not found.", "RESOURCE_NOT_FOUND");
 }
 
 async function savePlan(payload) {
