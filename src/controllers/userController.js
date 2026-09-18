@@ -61,7 +61,7 @@ async function exportMembers(req, res) {
   if (format === "pdf") {
     let gymName = "Muscle and Fitness Center";
     try {
-      const settings = await settingsRepository.publicSettings();
+      const settings = await settingsRepository.publicSettings(req.user?.branchId || 1);
       gymName = (lang === "ar" ? settings.gym_name_ar : settings.gym_name_en) || gymName;
     } catch (_error) {
       /* fall back to default name */

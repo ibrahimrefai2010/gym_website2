@@ -70,7 +70,7 @@ async function list(req, res) {
     throw createHttpError(403, "Your admin role cannot access this resource.", "PERMISSION_DENIED");
   }
 
-  const data = await adminRepository.listResource(req.params.resource);
+  const data = await adminRepository.listResource(req.params.resource, req.user?.branchId || 1);
   res.json({ success: true, data });
 }
 
@@ -89,10 +89,10 @@ async function save(req, res) {
     data = await adminRepository.saveOffer({ ...req.body, branchId: req.body.branchId || req.user?.branchId });
     await createLog("admin", req.user?.id, req.body.id ? "offer.update" : "offer.create", "offers", data?.id || req.body.id || null, null, req.ip);
   } else if (resource === "settings") {
-    data = await adminRepository.saveSetting(req.body, req.user?.id);
+    data = await adminRepository.saveSetting(req.body, req.user?.id, req.body.branchId || req.user?.branchId);
     await createLog("admin", req.user?.id, "settings.update", "settings", null, { key: data.key }, req.ip);
   } else if (resource === "siteImages") {
-    data = await adminRepository.saveSiteImages(req.body, req.user?.id);
+    data = await adminRepository.saveSiteImages(req.body, req.user?.id, req.body.branchId || req.user?.branchId);
     await createLog("admin", req.user?.id, "settings.images.update", "settings", null, null, req.ip);
   } else if (resource === "slides") {
     data = await adminRepository.saveSlide(req.body);

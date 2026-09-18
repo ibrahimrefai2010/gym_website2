@@ -201,7 +201,23 @@ async function activateMembership(membershipId, adminId) {
 }
 
 async function maybeAutoActivate(membershipId, adminId = null) {
-  const mode = await settingsRepository.getSetting("membership_activation_mode", "manual");
+  // Resolve the membership's own branch (via its user) rather than requiring
+  // callers (paymentService/paymentRepository) to pass one -- keeps this a
+  // drop-in fix without touching payment code, which is out of scope here.
+  let branchId = 1;
+  try {
+    const rows = await query(
+      `SELECT u.branch_id FROM memberships m
+       JOIN users u ON u.id = m.user_id
+       WHERE m.id = ? LIMIT 1`,
+      [membershipId]
+    );
+    branchId = rows[0]?.branch_id || 1;
+  } catch (_error) {
+    branchId = 1;
+  }
+
+  const mode = await settingsRepository.getSetting("membership_activation_mode", "manual", branchId);
   if (mode !== "auto") {
     return null;
   }

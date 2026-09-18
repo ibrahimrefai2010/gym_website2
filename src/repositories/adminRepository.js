@@ -205,7 +205,7 @@ async function getOverview() {
   };
 }
 
-async function listResource(resource) {
+async function listResource(resource, branchId = 1) {
   ensureDatabase();
   if (resource === "roles") return rbacRepository.listRoles();
   if (resource === "permissions") return rbacRepository.listPermissions();
@@ -234,8 +234,8 @@ async function listResource(resource) {
 
   if (resource === "plans") return planRepository.listPlans({ includeInactive: true });
   if (resource === "offers") return offerRepository.listOffers({ includeInactive: true });
-  if (resource === "settings") return settingsRepository.listSettings();
-  if (resource === "siteImages") return settingsRepository.settingsToBootstrap(await settingsRepository.publicSettings()).siteImages;
+  if (resource === "settings") return settingsRepository.listSettings(branchId);
+  if (resource === "siteImages") return settingsRepository.settingsToBootstrap(await settingsRepository.publicSettings(branchId)).siteImages;
   if (resource === "slides") return sliderRepository.listSlides({ includeInactive: true });
   if (resource === "messages") return messageRepository.listMessages();
 
@@ -254,14 +254,14 @@ async function saveOffer(payload) {
   return offerRepository.saveOffer(payload);
 }
 
-async function saveSetting(payload, adminId = null) {
+async function saveSetting(payload, adminId = null, branchId = 1) {
   ensureDatabase();
-  return settingsRepository.saveSetting(payload.key, payload.value, adminId, payload.type);
+  return settingsRepository.saveSetting(payload.key, payload.value, adminId, payload.type, branchId);
 }
 
-async function saveSiteImages(payload, adminId = null) {
+async function saveSiteImages(payload, adminId = null, branchId = 1) {
   ensureDatabase();
-  return settingsRepository.saveSiteImages(payload, adminId);
+  return settingsRepository.saveSiteImages(payload, adminId, branchId);
 }
 
 async function saveSlide(payload) {

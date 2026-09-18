@@ -59,37 +59,39 @@ function castSetting(row) {
   return row.value;
 }
 
-async function listSettings() {
+// `settings` is now branch-scoped (composite PK (branch_id, key_name), see
+// migration 202609180002_settings_branch_scope) -- every function below
+// takes a real branchId and reads/writes only that branch's row per key.
+// branchId defaults to 1 (Main) to match branchResolver.js's FALLBACK_BRANCH
+// and every other branch-aware repository in this codebase.
+async function listSettings(branchId = 1) {
   if (!hasDatabaseConfig()) {
     return fallbackSettings;
   }
 
-  const rows = await query("SELECT key_name, value, type, label_en, label_ar FROM settings ORDER BY key_name ASC");
+  const rows = await query(
+    "SELECT key_name, value, type, label_en, label_ar FROM settings WHERE branch_id = ? ORDER BY key_name ASC",
+    [branchId]
+  );
   return rows.reduce((result, row) => {
     result[row.key_name] = castSetting(row);
     return result;
   }, {});
 }
 
-async function getSetting(key, fallback = null) {
+async function getSetting(key, fallback = null, branchId = 1) {
   if (!hasDatabaseConfig()) {
     return fallbackSettings[key] ?? fallback;
   }
 
-  const rows = await query("SELECT key_name, value, type FROM settings WHERE key_name = ? LIMIT 1", [key]);
+  const rows = await query(
+    "SELECT key_name, value, type FROM settings WHERE branch_id = ? AND key_name = ? LIMIT 1",
+    [branchId, key]
+  );
   return rows[0] ? castSetting(rows[0]) : fallback;
 }
 
-// NOTE: `settings` is keyed on `key_name` alone (global, not per-branch) --
-// giving it real per-branch storage would mean restructuring its primary key
-// (key_name is not branch-scoped today) and touching every other call site
-// that assumes one global row per key. That restructure isn't part of the
-// owner-confirmed branch decisions (only plans/offers/invoices/business
-// registration were), so it's deferred to the branch-content seeding phase.
-// `branchId` is accepted here for forward-compatibility with callers that
-// already pass it (e.g. publicRepository.getBootstrap) but is currently a
-// no-op: every branch reads the same global settings row.
-async function publicSettings(_branchId = null) {
+async function publicSettings(branchId = 1) {
   if (!hasDatabaseConfig()) {
     return publicKeys.reduce((result, key) => {
       result[key] = fallbackSettings[key];
@@ -97,7 +99,7 @@ async function publicSettings(_branchId = null) {
     }, {});
   }
 
-  const rows = await query("SELECT key_name, value, type FROM settings");
+  const rows = await query("SELECT key_name, value, type FROM settings WHERE branch_id = ?", [branchId || 1]);
   const data = rows.reduce((result, row) => {
     result[row.key_name] = castSetting(row);
     return result;
@@ -108,7 +110,7 @@ async function publicSettings(_branchId = null) {
   }, {});
 }
 
-async function saveSetting(key, value, adminId = null, type = "string") {
+async function saveSetting(key, value, adminId = null, type = "string", branchId = 1) {
   if (!hasDatabaseConfig()) {
     throw createHttpError(503, "Database configuration is required.", "DATABASE_REQUIRED");
   }
@@ -134,16 +136,16 @@ async function saveSetting(key, value, adminId = null, type = "string") {
   }
 
   await query(
-    `INSERT INTO settings (key_name, value, type, updated_by)
-     VALUES (?, ?, ?, ?)
+    `INSERT INTO settings (branch_id, key_name, value, type, updated_by)
+     VALUES (?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE value = VALUES(value), type = VALUES(type), updated_by = VALUES(updated_by), updated_at = UTC_TIMESTAMP()`,
-    [key, value, type || "string", adminId]
+    [branchId || 1, key, value, type || "string", adminId]
   );
 
-  return { key, value, type: type || "string" };
+  return { key, value, type: type || "string", branchId: branchId || 1 };
 }
 
-async function saveSiteImages(payload, adminId = null) {
+async function saveSiteImages(payload, adminId = null, branchId = 1) {
   if (!hasDatabaseConfig()) {
     throw createHttpError(503, "Database configuration is required.", "DATABASE_REQUIRED");
   }
@@ -154,11 +156,11 @@ async function saveSiteImages(payload, adminId = null) {
       continue;
     }
     const value = cleanImageReference(payload[payloadKey], label);
-    await saveSetting(settingKey, value, adminId, "string");
+    await saveSetting(settingKey, value, adminId, "string", branchId);
     saved[payloadKey] = value;
   }
 
-  const settings = await publicSettings();
+  const settings = await publicSettings(branchId);
   return {
     saved,
     siteImages: settingsToBootstrap(settings).siteImages

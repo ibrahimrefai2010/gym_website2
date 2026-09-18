@@ -24,8 +24,8 @@ function getTransporter() {
   return transporter;
 }
 
-async function otpTemplate(otp) {
-  const configuredLogo = await settingsRepository.getSetting("site_logo_url", "/assets/logo.png");
+async function otpTemplate(otp, branchId = 1) {
+  const configuredLogo = await settingsRepository.getSetting("site_logo_url", "/assets/logo.png", branchId);
   const logoUrl = /^https?:\/\//i.test(configuredLogo)
     ? configuredLogo
     : `${env.baseUrl.replace(/\/$/, "")}${configuredLogo || "/assets/logo.png"}`;
@@ -40,7 +40,7 @@ async function otpTemplate(otp) {
   `;
 }
 
-async function sendPasswordResetOtp(to, otp) {
+async function sendPasswordResetOtp(to, otp, branchId = 1) {
   if (!smtpReady()) {
     appLogger.warn({ to }, "SMTP is not configured; password reset OTP was not sent.");
     return { sent: false };
@@ -52,7 +52,7 @@ async function sendPasswordResetOtp(to, otp) {
       to,
       subject: "Muscle and Fitness Center password reset code",
       text: `Your Muscle and Fitness Center verification code is ${otp}. It expires in ${env.otpExpiryMinutes} minutes.`,
-      html: await otpTemplate(otp)
+      html: await otpTemplate(otp, branchId)
     });
     return { sent: true };
   } catch (error) {

@@ -277,7 +277,7 @@ async function forgotPassword(identifier, context = {}) {
       expiresAt: otpExpiry(),
       ipAddress: context.ipAddress
     });
-    await emailService.sendPasswordResetOtp(user.email, otp);
+    await emailService.sendPasswordResetOtp(user.email, otp, branchId);
   }
 
   return {

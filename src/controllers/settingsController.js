@@ -2,8 +2,8 @@ const settingsRepository = require("../repositories/settingsRepository");
 const { assertEnum, cleanString, requireFields } = require("../utils/validator");
 const { createLog } = require("../utils/logger");
 
-async function list(_req, res) {
-  const data = await settingsRepository.listSettings();
+async function list(req, res) {
+  const data = await settingsRepository.listSettings(req.user?.branchId || 1);
   res.json({ success: true, data });
 }
 
@@ -15,14 +15,15 @@ async function save(req, res) {
     cleanString(req.body.key, 100),
     cleanString(req.body.value, 2000),
     req.user?.id,
-    type
+    type,
+    req.user?.branchId || 1
   );
   await createLog("admin", req.user?.id, "settings.update", "settings", null, { key: data.key }, req.ip);
   res.json({ success: true, data });
 }
 
-async function publicList(_req, res) {
-  const data = await settingsRepository.publicSettings();
+async function publicList(req, res) {
+  const data = await settingsRepository.publicSettings(req.branch?.id || 1);
   res.json({ success: true, data });
 }
 
