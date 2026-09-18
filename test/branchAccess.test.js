@@ -50,7 +50,17 @@ test("canSwitchBranch is true for super_admin without needing the database", asy
 });
 
 test("canSwitchBranch is false for a role without branches:manage (falls back to DEFAULT_ROLE_PERMISSIONS when RBAC tables are unavailable)", async () => {
-  const allowed = await canSwitchBranch({ id: 1, type: "admin", role: "branch_manager" });
+  // id: 1 previously collided with this DB's real admin_users row #1 (the
+  // actual owner/super_admin account) once a real DB is configured --
+  // rbacRepository.getAssignedRoleKeys(1) found that real admin's real
+  // super_admin role assignment and used it instead of ever falling back to
+  // the fake "branch_manager" legacy role this test passes in, so the test
+  // was accidentally asserting on the wrong admin's real permissions rather
+  // than exercising the DEFAULT_ROLE_PERMISSIONS fallback path its own name
+  // describes. A very unlikely-to-exist id has no admin_user_roles rows
+  // either way (DB-less or DB-configured), so getAssignedRoleKeys is always
+  // empty here and the fallback path is what actually gets exercised.
+  const allowed = await canSwitchBranch({ id: 999999999, type: "admin", role: "branch_manager" });
   assert.equal(allowed, false, "branchManagerPermissions does not include branches:manage");
 });
 

@@ -202,7 +202,11 @@ test.before(async () => {
     titleAr: `عرض تجريبي ${RUN}`,
     bodyEn: "Test offer",
     bodyAr: "عرض تجريبي",
-    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    // MySQL DATETIME wants 'YYYY-MM-DD HH:MM:SS', not raw ISO 8601 -- reuse
+    // this repo's existing date-formatting convention (see
+    // tokenRepository.utcDateFromNow / invoiceRepository.js:260) rather than
+    // a bare .toISOString(), which MySQL rejects with ER_TRUNCATED_WRONG_VALUE.
+    expiresAt: tokenRepository.utcDateFromNow(30 * 24 * 60 * 60 * 1000),
     branchId
   });
   ctx.mainOffer = await offerRepository.saveOffer(offerPayload(main.id, "Main"));
@@ -266,62 +270,67 @@ test.before(async () => {
 test.after(async () => {
   if (noDb) return;
 
-  if (ctx.ready) {
-    const tryDelete = async (sql, params) => {
-      try {
-        await query(sql, params);
-      } catch (_error) {
-        // best-effort cleanup
-      }
-    };
-    await tryDelete("DELETE FROM invoice_items WHERE invoice_id IN (?, ?)", [ctx.mainInvoiceId, ctx.womenInvoiceId]);
-    await tryDelete("DELETE FROM invoices WHERE id IN (?, ?)", [ctx.mainInvoiceId, ctx.womenInvoiceId]);
-    await tryDelete("DELETE FROM payments WHERE id IN (?, ?)", [ctx.mainPaymentId, ctx.womenPaymentId]);
-    await tryDelete("DELETE FROM memberships WHERE id IN (?, ?)", [ctx.mainMembershipId, ctx.womenMembershipId]);
-    await tryDelete("DELETE FROM plans WHERE id IN (?, ?, ?, ?)", [
-      ctx.mainPlan?.id,
-      ctx.womenPlan?.id,
-      ctx.mainPlanForDelete?.id,
-      ctx.womenPlanForDelete?.id
-    ]);
-    await tryDelete("DELETE FROM offers WHERE id IN (?, ?)", [ctx.mainOffer?.id, ctx.womenOffer?.id]);
-    await tryDelete("DELETE FROM otp_tokens WHERE identifier = ?", [ctx.sharedEmail]);
-    await tryDelete("DELETE FROM refresh_tokens WHERE subject_id IN (?, ?, ?, ?)", [
-      ctx.mainUserId,
-      ctx.womenUserId,
-      ctx.mainAdminId,
-      ctx.womenAdminId
-    ]);
-    await tryDelete("DELETE FROM users WHERE id IN (?, ?)", [ctx.mainUserId, ctx.womenUserId]);
-    await tryDelete("DELETE FROM roles WHERE key_name IN (?, ?)", [ctx.mainAdminRoleKey, ctx.womenAdminRoleKey]);
-    await tryDelete("DELETE FROM admin_users WHERE id IN (?, ?)", [ctx.mainAdminId, ctx.womenAdminId]);
+  // Not gated behind ctx.ready -- if test.before threw partway through (as
+  // it did while the offer-fixture datetime bug was still present), several
+  // rows can already exist even though ctx.ready never got set. Every field
+  // read below is optional-chained, so this is safe to run unconditionally
+  // and cleans up whatever actually got created, not just the happy path.
+  const tryDelete = async (label, sql, params) => {
+    try {
+      await query(sql, params);
+    } catch (error) {
+      // Best-effort cleanup, but NOT silent -- a swallowed error here is
+      // exactly how test fixtures end up permanently orphaned in the shared
+      // dev DB (which happened: an earlier run of this suite left users/
+      // plans behind because this used to catch-and-ignore with no trace).
+      console.error(`[crossBranchSecurity.test.js cleanup] ${label} failed:`, error.code || error.message);
+    }
+  };
 
-    if (ctx.womenVat?.changed) {
-      await businessSettingsRepository
-        .update(
-          {
-            vatNumber: ctx.womenVat.original?.vatNumber || "",
-            legalEntityNameEn: ctx.womenVat.original?.legalEntityNameEn || "",
-            legalEntityNameAr: ctx.womenVat.original?.legalEntityNameAr || ""
-          },
-          null,
-          ctx.womenBranchId
-        )
-        .catch(() => {});
-    }
-    if (ctx.mainVat?.changed) {
-      await businessSettingsRepository
-        .update(
-          {
-            vatNumber: ctx.mainVat.original?.vatNumber || "",
-            legalEntityNameEn: ctx.mainVat.original?.legalEntityNameEn || "",
-            legalEntityNameAr: ctx.mainVat.original?.legalEntityNameAr || ""
-          },
-          null,
-          ctx.mainBranchId
-        )
-        .catch(() => {});
-    }
+  await tryDelete("invoice_items", "DELETE FROM invoice_items WHERE invoice_id IN (?, ?)", [ctx.mainInvoiceId, ctx.womenInvoiceId]);
+  await tryDelete("invoices", "DELETE FROM invoices WHERE id IN (?, ?)", [ctx.mainInvoiceId, ctx.womenInvoiceId]);
+  await tryDelete("payments", "DELETE FROM payments WHERE id IN (?, ?)", [ctx.mainPaymentId, ctx.womenPaymentId]);
+  await tryDelete("memberships", "DELETE FROM memberships WHERE id IN (?, ?)", [ctx.mainMembershipId, ctx.womenMembershipId]);
+  await tryDelete("plans", "DELETE FROM plans WHERE id IN (?, ?, ?, ?)", [
+    ctx.mainPlan?.id,
+    ctx.womenPlan?.id,
+    ctx.mainPlanForDelete?.id,
+    ctx.womenPlanForDelete?.id
+  ]);
+  await tryDelete("offers", "DELETE FROM offers WHERE id IN (?, ?)", [ctx.mainOffer?.id, ctx.womenOffer?.id]);
+  await tryDelete("otp_tokens", "DELETE FROM otp_tokens WHERE identifier = ?", [ctx.sharedEmail]);
+  // No explicit refresh_tokens cleanup needed -- both its user_id and
+  // admin_user_id columns are ON DELETE CASCADE (see src/db/schema.sql),
+  // so deleting the users/admin_users rows below already takes care of it.
+  await tryDelete("users", "DELETE FROM users WHERE id IN (?, ?)", [ctx.mainUserId, ctx.womenUserId]);
+  await tryDelete("roles", "DELETE FROM roles WHERE key_name IN (?, ?)", [ctx.mainAdminRoleKey, ctx.womenAdminRoleKey]);
+  await tryDelete("admin_users", "DELETE FROM admin_users WHERE id IN (?, ?)", [ctx.mainAdminId, ctx.womenAdminId]);
+
+  if (ctx.womenVat?.changed) {
+    await businessSettingsRepository
+      .update(
+        {
+          vatNumber: ctx.womenVat.original?.vatNumber || "",
+          legalEntityNameEn: ctx.womenVat.original?.legalEntityNameEn || "",
+          legalEntityNameAr: ctx.womenVat.original?.legalEntityNameAr || ""
+        },
+        null,
+        ctx.womenBranchId
+      )
+      .catch((error) => console.error("[crossBranchSecurity.test.js cleanup] Women's VAT restore failed:", error.message));
+  }
+  if (ctx.mainVat?.changed) {
+    await businessSettingsRepository
+      .update(
+        {
+          vatNumber: ctx.mainVat.original?.vatNumber || "",
+          legalEntityNameEn: ctx.mainVat.original?.legalEntityNameEn || "",
+          legalEntityNameAr: ctx.mainVat.original?.legalEntityNameAr || ""
+        },
+        null,
+        ctx.mainBranchId
+      )
+      .catch((error) => console.error("[crossBranchSecurity.test.js cleanup] Main VAT restore failed:", error.message));
   }
 
   if (server) {
@@ -361,8 +370,13 @@ test("scenario 1: a Main-branch user's session cannot see the Women's-branch acc
   const womenDashboard = await api("GET", "/api/v1/user/dashboard", { token: ctx.womenUserToken });
   assert.equal(mainDashboard.status, 200);
   assert.equal(womenDashboard.status, 200);
-  assert.equal(mainDashboard.json.data.user.id, ctx.mainUserId);
-  assert.equal(womenDashboard.json.data.user.id, ctx.womenUserId);
+  // /api/v1/user/dashboard is actually served by memberController.dashboard
+  // (memberRoutes is mounted at /api/v1/user ahead of userRoutes in app.js,
+  // and both define a /dashboard route -- memberRoutes wins), whose shape is
+  // { member: {...}, ... }, not { user: {...} }. See
+  // src/services/memberPortalService.js:132-149.
+  assert.equal(mainDashboard.json.data.member.id, ctx.mainUserId);
+  assert.equal(womenDashboard.json.data.member.id, ctx.womenUserId);
 });
 
 // --- Scenario 2: purchase route rejects cross-branch plan. ---
@@ -554,7 +568,7 @@ test("scenario 4e (by-id): offer update by id is branch-checked", { skip: noDb }
       titleAr: "مخترق",
       bodyEn: "b",
       bodyAr: "ب",
-      expiresAt: new Date(Date.now() + 1000000).toISOString()
+      expiresAt: tokenRepository.utcDateFromNow(1000000)
     }
   });
   assert.equal(crossUpdate.status, 404);
@@ -566,7 +580,7 @@ test("scenario 4e (by-id): offer update by id is branch-checked", { skip: noDb }
       titleAr: "عرض نسائي محدث",
       bodyEn: "b",
       bodyAr: "ب",
-      expiresAt: new Date(Date.now() + 1000000).toISOString()
+      expiresAt: tokenRepository.utcDateFromNow(1000000)
     }
   });
   assert.equal(ownUpdate.status, 200);
