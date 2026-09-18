@@ -271,7 +271,11 @@ async function listResource(resource, branchId = 1) {
   if (resource === "settings") return settingsRepository.listSettings(branchId);
   if (resource === "siteImages") return settingsRepository.settingsToBootstrap(await settingsRepository.publicSettings(branchId)).siteImages;
   if (resource === "slides") return sliderRepository.listSlides({ includeInactive: true, branchId });
-  if (resource === "messages") return messageRepository.listMessages();
+  // listMessages now returns { items, pagination } (see messageRepository.js
+  // -- extended for the Leads/CRM filters), but every other resource here
+  // returns a flat array, so unwrap .items to keep this generic
+  // resource/export endpoint's existing contract.
+  if (resource === "messages") return (await messageRepository.listMessages({ pageSize: 100 })).items;
 
   if (resource === "users") {
     return query(

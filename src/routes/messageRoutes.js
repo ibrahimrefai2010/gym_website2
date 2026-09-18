@@ -1,7 +1,7 @@
 const express = require("express");
 const rateLimit = require("express-rate-limit");
 const messageController = require("../controllers/messageController");
-const { authenticate, requireAdmin, requirePermission } = require("../middleware/auth");
+const { authenticate, requireAdmin, requireAnyPermission, requirePermission } = require("../middleware/auth");
 const { asyncHandler } = require("../utils/asyncHandler");
 
 const router = express.Router();
@@ -15,8 +15,21 @@ const contactLimiter = rateLimit({
 });
 
 router.post("/", contactLimiter, asyncHandler(messageController.create));
-router.get("/", authenticate, requireAdmin, requirePermission("messages:write"), asyncHandler(messageController.list));
+// Leads/CRM (Part 2): list is reachable by either the plain-inbox audience
+// (messages:write) or the CRM-only audience (leads:read -- e.g. marketing,
+// which can view the pipeline without inbox-triage rights). See
+// middleware/auth.js's requireAnyPermission and messageController.list.
+router.get("/", authenticate, requireAdmin, requireAnyPermission("messages:write", "leads:read"), asyncHandler(messageController.list));
 router.put("/:id", authenticate, requireAdmin, requirePermission("messages:write"), asyncHandler(messageController.update));
 router.delete("/:id", authenticate, requireAdmin, requirePermission("messages:write"), asyncHandler(messageController.remove));
+
+// Leads/CRM (Part 2): pipeline fields (lead_status/assigned_to), follow-up
+// notes, and convert-to-member -- all gated by leads:write, whose catalog
+// description ("Assign, update, note, convert, and export leads") already
+// matches this exact set of actions.
+router.patch("/:id/lead", authenticate, requireAdmin, requirePermission("leads:write"), asyncHandler(messageController.updateLead));
+router.get("/:id/notes", authenticate, requireAdmin, requireAnyPermission("leads:read", "leads:write"), asyncHandler(messageController.listNotes));
+router.post("/:id/notes", authenticate, requireAdmin, requirePermission("leads:write"), asyncHandler(messageController.addNote));
+router.post("/:id/convert", authenticate, requireAdmin, requirePermission("leads:write"), asyncHandler(messageController.convert));
 
 module.exports = router;

@@ -134,10 +134,39 @@ function requirePermission(permission) {
   };
 }
 
+// Leads/CRM (Part 2): the messages list is the one endpoint two separate
+// permission grants must both be able to reach -- messages:write (inbox
+// triage: existing behavior, unchanged) and leads:read (CRM viewing --
+// e.g. the "marketing" role has leads:read but not messages:write, see
+// src/security/permissions.js). Every other route in this app gates on a
+// single permission, so this stays a small, local OR-check rather than a
+// new general-purpose abstraction.
+function requireAnyPermission(...permissions) {
+  return async function anyPermissionGuard(req, _res, next) {
+    try {
+      if (req.user?.type !== "admin") {
+        return next(createHttpError(403, "Administrator access is required.", "ADMIN_REQUIRED"));
+      }
+
+      for (const permission of permissions) {
+        // eslint-disable-next-line no-await-in-loop
+        if (await rbacRepository.hasPermission(req.user.id, req.user.role, permission)) {
+          return next();
+        }
+      }
+
+      return next(createHttpError(403, "Your admin role cannot perform this action.", "PERMISSION_DENIED"));
+    } catch (error) {
+      return next(error);
+    }
+  };
+}
+
 module.exports = {
   authenticate,
   authenticateMedia,
   requireAdmin,
+  requireAnyPermission,
   requirePermission,
   requireRole
 };
