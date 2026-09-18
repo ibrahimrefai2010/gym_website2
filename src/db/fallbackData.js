@@ -113,6 +113,11 @@ const data = {
       }
     }
   ],
+  // No DB-less demo coaches -- an empty roster is the correct fallback (the
+  // public coaches section renders nothing rather than fabricated staff),
+  // same as this array simply being absent would do, but present here so
+  // every bootstrap consumer can rely on `coaches` always being an array.
+  coaches: [],
   offers: [
     {
       id: 1,

@@ -2,6 +2,7 @@ const { hasDatabaseConfig, query } = require("../config/database");
 const fallbackData = require("../db/fallbackData");
 const planRepository = require("./planRepository");
 const offerRepository = require("./offerRepository");
+const coachRepository = require("./coachRepository");
 const settingsRepository = require("./settingsRepository");
 const sliderRepository = require("./sliderRepository");
 const { appLogger } = require("../utils/logger");
@@ -16,9 +17,16 @@ async function optionalRows(sql, params = []) {
 }
 
 async function getDatabaseBootstrap(branchId = null) {
-  const [plans, offers, settings, slides, homepageRows] = await Promise.all([
+  const [plans, offers, coaches, settings, slides, homepageRows] = await Promise.all([
     planRepository.listPlans({ branchId }),
     offerRepository.listOffers({ branchId }),
+    // Public roster is active-only (includeInactive defaults to false) and,
+    // unlike the admin listCoaches call, must work even with no branchId at
+    // all (DB-less-adjacent edge case: branchResolver couldn't resolve one)
+    // -- listCoaches' own "empty branchId means no rows" convention already
+    // handles that by returning [], same as plans/offers would via their own
+    // branch filter.
+    coachRepository.listCoaches({ branchId: branchId || "" }),
     settingsRepository.publicSettings(branchId),
     sliderRepository.listSlides({ branchId }),
     // homepage_text rows are nullable branch_id ("applies to all branches");
@@ -58,6 +66,7 @@ async function getDatabaseBootstrap(branchId = null) {
     },
     plans: plans.length > 0 ? plans : fallbackData.plans,
     offers: offers.length > 0 ? offers : fallbackData.offers,
+    coaches,
     slides: slides.length > 0 ? slides : fallbackData.slides,
     faqs: fallbackData.faqs,
     siteImages: dynamic.siteImages,
