@@ -63,6 +63,26 @@ async function createPayment(payload) {
   return { id: result.insertId, status: payload.status || "pending" };
 }
 
+// For by-id ownership checks (paymentController.complete). Derived via the
+// paying user's own branch_id rather than trusting payments.branch_id
+// directly -- membershipRepository.maybeAutoActivate uses the same
+// via-the-user derivation for the identical reason (a payment's branch_id
+// column isn't reliably populated by every insert path, e.g. the Stripe
+// checkout flow in paymentService.createCheckoutSession/createIntent never
+// sets it; out of scope to change that provider-integration code here).
+async function getPaymentOwnerBranch(paymentId) {
+  ensureDatabase();
+  const rows = await query(
+    `SELECT p.id, u.branch_id
+     FROM payments p
+     JOIN users u ON u.id = p.user_id
+     WHERE p.id = ?
+     LIMIT 1`,
+    [paymentId]
+  );
+  return rows[0] || null;
+}
+
 async function completePayment(paymentId, adminId) {
   ensureDatabase();
   const rows = await query(
@@ -119,6 +139,7 @@ async function completePayment(paymentId, adminId) {
 module.exports = {
   completePayment,
   createPayment,
+  getPaymentOwnerBranch,
   hasProcessedEvent,
   recordEvent
 };

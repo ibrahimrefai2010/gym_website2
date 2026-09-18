@@ -16,8 +16,29 @@ router.get(
 );
 router.post("/buy", authenticate, asyncHandler(membershipController.buy));
 router.get("/me", authenticate, asyncHandler(membershipController.mine));
-router.patch("/:id/activate", authenticate, requireAdmin, requirePermission("memberships:write"), asyncHandler(membershipController.activate));
-router.patch("/:id/cancel", authenticate, requireAdmin, requirePermission("memberships:write"), asyncHandler(membershipController.cancel));
-router.patch("/:id/action", authenticate, requireAdmin, requirePermission("memberships:write"), asyncHandler(membershipController.action));
+router.patch(
+  "/:id/activate",
+  authenticate,
+  requireAdmin,
+  attachEffectiveBranch,
+  requirePermission("memberships:write"),
+  asyncHandler(membershipController.activate)
+);
+router.patch(
+  "/:id/cancel",
+  authenticate,
+  requireAdmin,
+  attachEffectiveBranch,
+  requirePermission("memberships:write"),
+  asyncHandler(membershipController.cancel)
+);
+router.patch(
+  "/:id/action",
+  authenticate,
+  requireAdmin,
+  attachEffectiveBranch,
+  requirePermission("memberships:write"),
+  asyncHandler(membershipController.action)
+);
 
 module.exports = router;

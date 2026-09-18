@@ -1,13 +1,26 @@
 const invoiceRepository = require("../repositories/invoiceRepository");
 const invoicePdfService = require("../services/invoicePdfService");
+const userRepository = require("../repositories/userRepository");
+const { assertBranchOwnership } = require("../security/branchAccess");
 const { createHttpError } = require("../utils/httpError");
 const { createLog } = require("../utils/logger");
 const { cleanString, pagination, requireFields } = require("../utils/validator");
 
+function invoiceNotFoundError() {
+  return createHttpError(404, "Invoice not found.", "INVOICE_NOT_FOUND");
+}
+
 async function list(req, res) {
+  // branchId is server-derived (req.effectiveBranchId), NOT taken from the
+  // query string -- previously ?branchId= was forwarded to
+  // invoiceRepository.listInvoices as-is (and an absent branchId meant "all
+  // branches, no filter"), so any admin could list every branch's invoices
+  // just by omitting the param, or another branch's by naming it. Same bug
+  // class as the by-id gap this phase fixes, just at the list level. See
+  // customerController.list for the established correct pattern.
   const data = await invoiceRepository.listInvoices({
     ...pagination(req.query),
-    branchId: cleanString(req.query.branchId, 20),
+    branchId: req.effectiveBranchId || "",
     userId: cleanString(req.query.userId, 20),
     status: cleanString(req.query.status, 20),
     dateFrom: cleanString(req.query.dateFrom, 20),
@@ -19,20 +32,33 @@ async function list(req, res) {
 
 async function detail(req, res) {
   const data = await invoiceRepository.getInvoice(req.params.id);
-  if (!data) {
-    throw createHttpError(404, "Invoice not found.", "INVOICE_NOT_FOUND");
-  }
+  await assertBranchOwnership(data?.invoice, req, invoiceNotFoundError());
   res.json({ success: true, data });
 }
 
 async function create(req, res) {
   requireFields(req.body, ["userId"]);
-  const data = await invoiceRepository.createInvoice(req.body, req.user?.id);
+  // branchId previously came straight from payload.branchId (defaulting to
+  // Main) inside invoiceRepository.createInvoice -- a client-supplied value
+  // with no check at all against either the buyer's real branch or the
+  // requesting admin's own branch. An invoice always belongs to whichever
+  // branch its buyer belongs to, so that's derived server-side from the
+  // buyer's own row, and the admin must actually control that branch (same
+  // ownership rule as everywhere else in this file) to bill them at all --
+  // this also stops a branch-scoped admin from invoicing another branch's
+  // customer merely by naming their userId.
+  const buyer = await userRepository.findById(req.body.userId);
+  await assertBranchOwnership(buyer, req, createHttpError(404, "Customer not found.", "CUSTOMER_NOT_FOUND"));
+
+  const data = await invoiceRepository.createInvoice({ ...req.body, branchId: buyer.branch_id }, req.user?.id);
   await createLog("admin", req.user?.id, "invoice.create", "invoices", data.id, null, req.ip);
   res.status(201).json({ success: true, data: await invoiceRepository.getInvoice(data.id) });
 }
 
 async function updateStatus(req, res) {
+  const existing = await invoiceRepository.getInvoice(req.params.id);
+  await assertBranchOwnership(existing?.invoice, req, invoiceNotFoundError());
+
   const status = cleanString(req.body.status, 20);
   const data = await invoiceRepository.updateInvoiceStatus(req.params.id, status, req.user?.id);
   await createLog("admin", req.user?.id, "invoice.status.update", "invoices", req.params.id, { status }, req.ip);
@@ -41,13 +67,16 @@ async function updateStatus(req, res) {
 
 async function overdue(req, res) {
   const data = await invoiceRepository.overdueInvoices({
-    branchId: cleanString(req.query.branchId, 20),
+    branchId: req.effectiveBranchId || "",
     asOf: cleanString(req.query.asOf, 20)
   });
   res.json({ success: true, data });
 }
 
 async function pdf(req, res) {
+  const existing = await invoiceRepository.getInvoice(req.params.id);
+  await assertBranchOwnership(existing?.invoice, req, invoiceNotFoundError());
+
   const buffer = await invoicePdfService.renderInvoicePdf(req.params.id);
   await invoiceRepository.markPdfGenerated(req.params.id).catch(() => {});
   await createLog("admin", req.user?.id, "invoice.pdf", "invoices", req.params.id, null, req.ip);

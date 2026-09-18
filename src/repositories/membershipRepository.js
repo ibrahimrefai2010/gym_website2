@@ -80,6 +80,15 @@ async function getMine(userId) {
   return rows[0] || null;
 }
 
+// For by-id ownership checks (membershipController.activate/cancel/action) --
+// memberships carry their own branch_id column (see listMemberships above),
+// so this is a direct lookup, not a join through users.
+async function getMembership(id) {
+  ensureDatabase();
+  const rows = await query("SELECT id, user_id, branch_id, status FROM memberships WHERE id = ? LIMIT 1", [id]);
+  return rows[0] || null;
+}
+
 async function activeMembership(userId) {
   ensureDatabase();
   const rows = await query(
@@ -125,10 +134,16 @@ async function buy({ userId, planId, paymentMethod = "manual", provider = "manua
       [userId, planId, userBranchId]
     );
 
+    // branch_id explicit here too (same reasoning as the membership insert
+    // above) -- without it this row would silently fall back to the
+    // payments.branch_id column default (Main), which would make a
+    // Women's-branch payment invisible to by-branch ownership checks
+    // (assertBranchOwnership / paymentController.complete) and to any
+    // branch-filtered payments list.
     const [paymentResult] = await connection.execute(
-      `INSERT INTO payments (user_id, membership_id, provider, payment_method, amount, currency, status)
-       VALUES (?, ?, ?, ?, ?, 'SAR', 'pending')`,
-      [userId, membershipResult.insertId, provider, paymentMethod, plan.price]
+      `INSERT INTO payments (user_id, membership_id, branch_id, provider, payment_method, amount, currency, status)
+       VALUES (?, ?, ?, ?, ?, ?, 'SAR', 'pending')`,
+      [userId, membershipResult.insertId, userBranchId, provider, paymentMethod, plan.price]
     );
 
     return {
@@ -271,6 +286,7 @@ module.exports = {
   activateMembership,
   buy,
   expireMemberships,
+  getMembership,
   getMine,
   listMemberships,
   maybeAutoActivate,

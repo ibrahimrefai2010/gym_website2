@@ -85,8 +85,63 @@ async function resolveWriteBranchId(req, requestedBranchId) {
   return parsed;
 }
 
+// By-ID ownership gate: list-level filtering (resolveEffectiveBranchId) only
+// protects listing endpoints -- fetching/mutating a *specific* record by its
+// numeric id bypasses that filter entirely unless every by-id controller
+// re-checks branch ownership itself. This is that one shared check.
+//
+//  - record: the already-fetched row (or null/undefined if none was found).
+//    Reads record.branchId (camelCase, as repositories' mapped results use)
+//    falling back to record.branch_id (raw SQL row shape) -- whichever the
+//    caller's repository returns.
+//  - req: the Express request; req.user.branchId is the admin's own
+//    server-derived home branch, req.effectiveBranchId is their *current
+//    viewing* branch (only meaningful for switching admins).
+//  - notFoundError: the HttpError to throw both when the record does not
+//    exist at all AND when it exists but belongs to a branch the requester
+//    cannot currently act on. Collapsing both cases into the same 404
+//    (same status, message and code) is deliberate -- it must be impossible
+//    to tell "this id doesn't exist" apart from "this id belongs to a branch
+//    you can't see" (see brief: don't leak existence across branches via a
+//    distinguishable 403 vs 404). This codebase has no existing precedent
+//    for using 403 on an ownership mismatch -- 403 here is reserved for
+//    role/permission failures (see requirePermission/adminController), so
+//    404 is also the *consistent* choice, not just the conservative one.
+//
+// A non-switching admin's permitted branch is always their fixed home
+// branch (req.user.branchId) -- the same server-derived value
+// resolveEffectiveBranchId falls back to. A switching admin (super_admin or
+// branches:manage) must have their *effective* viewing branch match the
+// record -- so even a super_admin who hasn't switched their viewer to
+// "Women's Branch" cannot edit a Women's-branch record by guessing its id;
+// they must explicitly switch first. See module docblock for why this is
+// stricter than merely "super_admin can never cross branches".
+async function assertBranchOwnership(record, req, notFoundError) {
+  if (!record) {
+    throw notFoundError;
+  }
+
+  const recordBranchId = record.branchId != null ? Number(record.branchId) : record.branch_id != null ? Number(record.branch_id) : null;
+  if (recordBranchId == null) {
+    // Record type isn't branch-scoped -- nothing to check.
+    return record;
+  }
+
+  const allowed = await canSwitchBranch(req.user);
+  const permittedBranchId = allowed
+    ? req.effectiveBranchId ?? (await resolveEffectiveBranchId(req))
+    : req.user?.branchId ?? null;
+
+  if (permittedBranchId == null || Number(permittedBranchId) !== recordBranchId) {
+    throw notFoundError;
+  }
+
+  return record;
+}
+
 module.exports = {
   VIEW_BRANCH_HEADER,
+  assertBranchOwnership,
   canSwitchBranch,
   resolveEffectiveBranchId,
   resolveWriteBranchId

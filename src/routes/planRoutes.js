@@ -23,6 +23,13 @@ router.put(
   requirePermission("plans:write"),
   asyncHandler(planController.update)
 );
-router.delete("/:id", authenticate, requireAdmin, requirePermission("plans:write"), asyncHandler(planController.remove));
+router.delete(
+  "/:id",
+  authenticate,
+  requireAdmin,
+  attachEffectiveBranch,
+  requirePermission("plans:write"),
+  asyncHandler(planController.remove)
+);
 
 module.exports = router;

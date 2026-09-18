@@ -176,21 +176,29 @@ async function createCustomer(payload, adminId = null) {
 
 async function updateCustomer(userId, payload, adminId = null) {
   ensureDatabase();
-  const existing = await query("SELECT id FROM users WHERE id = ? AND deleted_at IS NULL LIMIT 1", [userId]);
+  // branch_id is deliberately NOT taken from payload -- see
+  // customerController.update, which already rejects a by-id request for a
+  // customer outside the caller's branch before this even runs. Letting a
+  // client-supplied branchId field move an already-owned customer to a
+  // *different* branch here would reopen that same hole from the write
+  // side (spoofed branch in the body silently taking effect), so this
+  // endpoint can never reassign a customer's branch -- that isn't a
+  // supported admin action.
+  const existing = await query("SELECT id, branch_id FROM users WHERE id = ? AND deleted_at IS NULL LIMIT 1", [userId]);
   if (!existing[0]) {
     throw createHttpError(404, "Customer not found.", "CUSTOMER_NOT_FOUND");
   }
+  const branchId = existing[0].branch_id;
 
   const profile = profilePayload(payload);
   await transaction(async (connection) => {
     await connection.execute(
       `UPDATE users
-       SET branch_id = COALESCE(?, branch_id), full_name = COALESCE(?, full_name),
+       SET full_name = COALESCE(?, full_name),
          email = COALESCE(?, email), phone = COALESCE(?, phone),
          status = COALESCE(?, status), updated_by = ?, updated_at = UTC_TIMESTAMP()
        WHERE id = ? AND deleted_at IS NULL`,
       [
-        payload.branchId || null,
         payload.fullName || null,
         payload.email || null,
         payload.phone || null,
@@ -204,9 +212,8 @@ async function updateCustomer(userId, payload, adminId = null) {
         (user_id, branch_id, national_id, passport_number, residency_number, nationality, gender,
          birth_date, occupation, company, address, city, country, height_cm, weight_kg,
          body_fat_percent, goals, trainer_notes, tags, metadata, created_by, updated_by)
-       VALUES (?, COALESCE(?, 1), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
-         branch_id = COALESCE(VALUES(branch_id), branch_id),
          national_id = VALUES(national_id),
          passport_number = VALUES(passport_number),
          residency_number = VALUES(residency_number),
@@ -229,7 +236,7 @@ async function updateCustomer(userId, payload, adminId = null) {
          updated_at = UTC_TIMESTAMP()`,
       [
         userId,
-        payload.branchId || null,
+        branchId,
         profile.nationalId,
         profile.passportNumber,
         profile.residencyNumber,

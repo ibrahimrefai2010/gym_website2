@@ -6,6 +6,7 @@ const {
   requireAdmin,
   requirePermission
 } = require("../middleware/auth");
+const { attachEffectiveBranch } = require("../middleware/adminBranchScope");
 const { asyncHandler } = require("../utils/asyncHandler");
 
 const router = express.Router();
@@ -16,11 +17,12 @@ router.get(
   "/:id/pdf",
   authenticateMedia,
   requireAdmin,
+  attachEffectiveBranch,
   requirePermission("invoices:read"),
   asyncHandler(invoiceController.pdf)
 );
 
-router.use(authenticate, requireAdmin);
+router.use(authenticate, requireAdmin, attachEffectiveBranch);
 router.get("/", requirePermission("invoices:read"), asyncHandler(invoiceController.list));
 router.get("/overdue", requirePermission("invoices:read"), asyncHandler(invoiceController.overdue));
 router.post("/", requirePermission("invoices:write"), asyncHandler(invoiceController.create));

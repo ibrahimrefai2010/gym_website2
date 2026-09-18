@@ -1,4 +1,5 @@
 const customerRepository = require("../repositories/customerRepository");
+const { assertBranchOwnership, resolveWriteBranchId } = require("../security/branchAccess");
 const { createHttpError } = require("../utils/httpError");
 const { createLog } = require("../utils/logger");
 const {
@@ -48,9 +49,10 @@ async function list(req, res) {
 
 async function detail(req, res) {
   const data = await customerRepository.getCustomer(req.params.id);
-  if (!data) {
-    throw createHttpError(404, "Customer not found.", "CUSTOMER_NOT_FOUND");
-  }
+  // By-id fetch bypasses list()'s branchId filter entirely unless checked
+  // here too -- a branch-scoped admin who knows/guesses another branch's
+  // customer id must get the same 404 as a nonexistent id, never the data.
+  await assertBranchOwnership(data, req, createHttpError(404, "Customer not found.", "CUSTOMER_NOT_FOUND"));
   res.json({ success: true, data });
 }
 
@@ -64,12 +66,19 @@ async function create(req, res) {
   if (req.body.status) {
     assertEnum(cleanString(req.body.status, 20), ["active", "inactive", "suspended"], "Customer status");
   }
-  const data = await customerRepository.createCustomer(normalizePayload(req.body), req.user?.id);
+  // branchId is server-resolved, same as planController.create/offerController.create --
+  // a non-switching admin's new customer always lands in their own branch,
+  // regardless of what the client sent (createCustomer previously trusted
+  // payload.branchId as-is, defaulting to Main when absent).
+  const branchId = await resolveWriteBranchId(req, req.body.branchId);
+  const data = await customerRepository.createCustomer({ ...normalizePayload(req.body), branchId }, req.user?.id);
   await createLog("admin", req.user?.id, "customer.create", "users", data.id, null, req.ip);
   res.status(201).json({ success: true, data });
 }
 
 async function update(req, res) {
+  const existing = await customerRepository.getCustomer(req.params.id);
+  await assertBranchOwnership(existing, req, createHttpError(404, "Customer not found.", "CUSTOMER_NOT_FOUND"));
   if (req.body.email) {
     assertEmail(req.body.email);
   }

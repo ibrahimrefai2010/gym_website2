@@ -1,6 +1,8 @@
 const paymentService = require("../services/paymentService");
+const paymentRepository = require("../repositories/paymentRepository");
 const publicRepository = require("../repositories/publicRepository");
 const userRepository = require("../repositories/userRepository");
+const { assertBranchOwnership } = require("../security/branchAccess");
 const { createHttpError } = require("../utils/httpError");
 
 async function createCheckout(req, res) {
@@ -50,6 +52,9 @@ async function webhook(req, res) {
 }
 
 async function complete(req, res) {
+  const owner = await paymentRepository.getPaymentOwnerBranch(req.params.id);
+  await assertBranchOwnership(owner, req, createHttpError(404, "Payment not found.", "PAYMENT_NOT_FOUND"));
+
   const data = await paymentService.completePayment(req.user.id, req.params.id, {
     ipAddress: req.ip
   });

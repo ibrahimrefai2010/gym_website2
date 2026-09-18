@@ -74,6 +74,13 @@ async function listOffers({ includeInactive = false, branchId = "" } = {}) {
   return rows.map(mapOffer);
 }
 
+// For by-id ownership checks (offerController.update/remove) -- mirrors
+// planRepository.getPlan.
+async function getOffer(id) {
+  const offers = await listOffers({ includeInactive: true });
+  return offers.find((offer) => String(offer.id) === String(id)) || null;
+}
+
 async function saveOffer(payload) {
   ensureDatabase();
   const expiresAt = payload.expiresAt || payload.endDate || payload.validUntil;
@@ -172,6 +179,7 @@ async function deleteOffer(id) {
 
 module.exports = {
   deleteOffer,
+  getOffer,
   listOffers,
   saveOffer
 };

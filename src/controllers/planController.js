@@ -1,5 +1,6 @@
 const planRepository = require("../repositories/planRepository");
-const { resolveWriteBranchId } = require("../security/branchAccess");
+const { assertBranchOwnership, resolveWriteBranchId } = require("../security/branchAccess");
+const { createHttpError } = require("../utils/httpError");
 const { createLog } = require("../utils/logger");
 
 // Public route (no auth) -- branch comes from req.branch (subdomain), set by
@@ -22,6 +23,15 @@ async function create(req, res) {
 }
 
 async function update(req, res) {
+  // Without this, savePlan's UPDATE ... WHERE id = ? has no branch check at
+  // all -- a non-switching admin's forced-home branchId (resolveWriteBranchId
+  // below) would silently overwrite branch_id on ANY plan id, hijacking a
+  // plan that belongs to a different branch entirely. Ownership must be
+  // checked against the plan's *existing* branch, before the write resolves
+  // its target branch.
+  const existing = await planRepository.getPlan(req.params.id);
+  await assertBranchOwnership(existing, req, createHttpError(404, "Plan not found.", "PLAN_NOT_FOUND"));
+
   const branchId = await resolveWriteBranchId(req, req.body.branchId);
   const data = await planRepository.savePlan({
     ...req.body,
@@ -33,6 +43,9 @@ async function update(req, res) {
 }
 
 async function remove(req, res) {
+  const existing = await planRepository.getPlan(req.params.id);
+  await assertBranchOwnership(existing, req, createHttpError(404, "Plan not found.", "PLAN_NOT_FOUND"));
+
   const data = await planRepository.deletePlan(req.params.id);
   await createLog("admin", req.user?.id, "plan.delete", "plans", req.params.id, null, req.ip);
   res.json({ success: true, data });

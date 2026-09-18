@@ -23,6 +23,13 @@ router.put(
   requirePermission("offers:write"),
   asyncHandler(offerController.update)
 );
-router.delete("/:id", authenticate, requireAdmin, requirePermission("offers:write"), asyncHandler(offerController.remove));
+router.delete(
+  "/:id",
+  authenticate,
+  requireAdmin,
+  attachEffectiveBranch,
+  requirePermission("offers:write"),
+  asyncHandler(offerController.remove)
+);
 
 module.exports = router;

@@ -6,7 +6,9 @@ const { env } = require("../config/env");
 const { assertSaudiPhone, assertStrongPassword, cleanEmail, cleanPhone, cleanString, requireFields } = require("../utils/validator");
 const { createLog } = require("../utils/logger");
 const rbacRepository = require("../repositories/rbacRepository");
-const { resolveWriteBranchId } = require("../security/branchAccess");
+const planRepository = require("../repositories/planRepository");
+const offerRepository = require("../repositories/offerRepository");
+const { assertBranchOwnership, resolveWriteBranchId } = require("../security/branchAccess");
 
 const writePermissions = {
   plans: "plans:write",
@@ -84,10 +86,21 @@ async function save(req, res) {
   }
 
   if (resource === "plans") {
+    // This generic resource endpoint reaches the very same planRepository as
+    // PUT /api/v1/plans/:id (planController.update) but with the id inside
+    // the body instead of the URL -- same by-id ownership gap, same fix.
+    if (req.body.id) {
+      const existing = await planRepository.getPlan(req.body.id);
+      await assertBranchOwnership(existing, req, createHttpError(404, "Plan not found.", "PLAN_NOT_FOUND"));
+    }
     const branchId = await resolveWriteBranchId(req, req.body.branchId);
     data = await adminRepository.savePlan({ ...req.body, branchId });
     await createLog("admin", req.user?.id, req.body.id ? "plan.update" : "plan.create", "plans", data?.id || req.body.id || null, null, req.ip, branchId);
   } else if (resource === "offers") {
+    if (req.body.id) {
+      const existing = await offerRepository.getOffer(req.body.id);
+      await assertBranchOwnership(existing, req, createHttpError(404, "Offer not found.", "OFFER_NOT_FOUND"));
+    }
     const branchId = await resolveWriteBranchId(req, req.body.branchId);
     data = await adminRepository.saveOffer({ ...req.body, branchId });
     await createLog("admin", req.user?.id, req.body.id ? "offer.update" : "offer.create", "offers", data?.id || req.body.id || null, null, req.ip, branchId);

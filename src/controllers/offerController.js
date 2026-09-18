@@ -1,5 +1,6 @@
 const offerRepository = require("../repositories/offerRepository");
-const { resolveWriteBranchId } = require("../security/branchAccess");
+const { assertBranchOwnership, resolveWriteBranchId } = require("../security/branchAccess");
+const { createHttpError } = require("../utils/httpError");
 const { createLog } = require("../utils/logger");
 
 // Public route (no auth) -- branch comes from req.branch (subdomain), set by
@@ -19,6 +20,12 @@ async function create(req, res) {
 }
 
 async function update(req, res) {
+  // Same reasoning as planController.update -- saveOffer's UPDATE has no
+  // branch check of its own, so an existing offer outside the caller's
+  // branch must be rejected before resolveWriteBranchId ever runs.
+  const existing = await offerRepository.getOffer(req.params.id);
+  await assertBranchOwnership(existing, req, createHttpError(404, "Offer not found.", "OFFER_NOT_FOUND"));
+
   const branchId = await resolveWriteBranchId(req, req.body.branchId);
   const data = await offerRepository.saveOffer({
     ...req.body,
@@ -30,6 +37,9 @@ async function update(req, res) {
 }
 
 async function remove(req, res) {
+  const existing = await offerRepository.getOffer(req.params.id);
+  await assertBranchOwnership(existing, req, createHttpError(404, "Offer not found.", "OFFER_NOT_FOUND"));
+
   const data = await offerRepository.deleteOffer(req.params.id);
   await createLog("admin", req.user?.id, "offer.delete", "offers", req.params.id, null, req.ip);
   res.json({ success: true, data });
