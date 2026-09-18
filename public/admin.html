@@ -57,8 +57,15 @@
             <p class="eyebrow" data-i18n="nav.admin">الإدارة</p>
             <h1 data-i18n="admin.title">لوحة التشغيل</h1>
             <p data-i18n="admin.body">الأعضاء، والعضويات، والعروض، والأسعار، والمحتوى، والمدفوعات، والسجلات.</p>
+            <span class="branch-badge branch-badge--neutral" id="branchBadge" hidden></span>
           </div>
-          <a class="btn small" href="/user.html" data-i18n="nav.account">الحساب</a>
+          <div class="admin-topbar-actions">
+            <label class="branch-switcher" id="branchSwitcherWrap" hidden>
+              <span data-i18n="admin.branch.viewing">الفرع المعروض</span>
+              <select id="branchSwitcher" data-i18n-label="admin.branch.viewing"></select>
+            </label>
+            <a class="btn small" href="/user.html" data-i18n="nav.account">الحساب</a>
+          </div>
         </div>
 
         <section class="admin-section is-active" data-admin-section="overview">
@@ -183,6 +190,10 @@
             <form class="auth-form" id="planForm" novalidate>
               <input id="planId" name="id" type="hidden">
               <div class="form-grid">
+                <div class="field" data-branch-field-wrap>
+                  <label for="planBranchId" data-i18n="admin.branch.field">الفرع</label>
+                  <select id="planBranchId" name="branchId" data-branch-field></select>
+                </div>
                 <div class="field"><label for="planNameEn">اسم الباقة الرئيسي</label><input id="planNameEn" name="nameEn" required></div>
                 <div class="field"><label for="planNameAr">اسم الباقة العربي</label><input id="planNameAr" name="nameAr" required></div>
                 <div class="field"><label for="planDescriptionEn">الوصف الرئيسي</label><input id="planDescriptionEn" name="descriptionEn" required></div>
@@ -219,6 +230,10 @@
             <form class="auth-form" id="offerForm" novalidate>
               <input id="offerId" name="id" type="hidden">
               <div class="form-grid">
+                <div class="field" data-branch-field-wrap>
+                  <label for="offerBranchId" data-i18n="admin.branch.field">الفرع</label>
+                  <select id="offerBranchId" name="branchId" data-branch-field></select>
+                </div>
                 <div class="field"><label for="offerTitleEn">عنوان العرض الرئيسي</label><input id="offerTitleEn" name="titleEn" required></div>
                 <div class="field"><label for="offerTitleAr">عنوان العرض العربي</label><input id="offerTitleAr" name="titleAr" required></div>
                 <div class="field"><label for="offerBadgeEn">وسم العرض الرئيسي</label><input id="offerBadgeEn" name="badgeEn" required></div>

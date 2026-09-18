@@ -1,5 +1,7 @@
 (function adminDashboard() {
   const state = {
+    me: null,
+    branches: [],
     overview: null,
     publicData: window.GYM_DEFAULT_DATA,
     plans: [],
@@ -13,6 +15,161 @@
     selectedRoleKey: null,
     selectedMessageId: null
   };
+
+  const VIEW_BRANCH_STORAGE_KEY = "admin.viewBranchId";
+
+  function getStoredViewBranchId() {
+    try {
+      return window.localStorage.getItem(VIEW_BRANCH_STORAGE_KEY) || "";
+    } catch (_error) {
+      return "";
+    }
+  }
+
+  function setStoredViewBranchId(branchId) {
+    try {
+      if (branchId) {
+        window.localStorage.setItem(VIEW_BRANCH_STORAGE_KEY, String(branchId));
+      } else {
+        window.localStorage.removeItem(VIEW_BRANCH_STORAGE_KEY);
+      }
+    } catch (_error) {
+      // Private-window/blocked storage: the switcher still works for this
+      // page load, it just won't persist across reloads.
+    }
+  }
+
+  // Client-side convenience only -- decides whether to *show* the switcher.
+  // The real enforcement is 100% server-side (src/security/branchAccess.js);
+  // an admin who fails this check and forges the request anyway still only
+  // ever gets their own branch's data back.
+  function canSwitchBranchesClientSide() {
+    if (!state.me) {
+      return false;
+    }
+    if (state.me.role === "super_admin") {
+      return true;
+    }
+    const assignment = (state.rbac?.assignments || []).find(
+      (item) => String(item.adminId) === String(state.me.id)
+    );
+    if (!assignment || !assignment.roleKeys?.length) {
+      return false;
+    }
+    return (state.rbac?.roles || []).some(
+      (role) => assignment.roleKeys.includes(role.key) && (role.permissionKeys || []).includes("branches:manage")
+    );
+  }
+
+  // Two distinct, accessible colors: gold for the Main branch (matches the
+  // existing brand accent), rose for the Women's branch. Any future branch
+  // code falls back to the neutral badge style.
+  const BRANCH_BADGE_CLASS = {
+    main: "branch-badge--main",
+    women: "branch-badge--women"
+  };
+
+  // Used to enrich confirm() dialogs (plan delete, message delete) with the
+  // branch name of the record being acted on.
+  function branchNameForId(branchId) {
+    if (branchId == null) {
+      return "";
+    }
+    const fromList = state.branches.find((item) => String(item.id) === String(branchId));
+    if (fromList) {
+      return localize(fromList.name);
+    }
+    if (state.me?.branchId != null && String(state.me.branchId) === String(branchId) && state.me.branchName) {
+      return localize(state.me.branchName);
+    }
+    return "";
+  }
+
+  function currentBranchLabel() {
+    const branchId = getStoredViewBranchId();
+    if (branchId && canSwitchBranchesClientSide()) {
+      const branch = state.branches.find((item) => String(item.id) === String(branchId));
+      if (branch) {
+        return branch;
+      }
+    }
+    if (state.me?.branchName) {
+      return { id: state.me.branchId, code: state.me.branchCode, name: state.me.branchName };
+    }
+    return null;
+  }
+
+  function renderBranchUi() {
+    const badge = document.querySelector("#branchBadge");
+    const switcherWrap = document.querySelector("#branchSwitcherWrap");
+    const switcher = document.querySelector("#branchSwitcher");
+    if (!badge || !state.me) {
+      return;
+    }
+
+    const branch = currentBranchLabel();
+    badge.textContent = branch ? localize(branch.name) : "";
+    badge.className = "branch-badge " + (BRANCH_BADGE_CLASS[branch?.code] || "branch-badge--neutral");
+    badge.hidden = !branch;
+
+    const canSwitch = canSwitchBranchesClientSide();
+    if (switcherWrap) {
+      switcherWrap.hidden = !canSwitch;
+    }
+    if (switcher && canSwitch) {
+      const selected = getStoredViewBranchId() || String(state.me.branchId || "");
+      switcher.innerHTML = state.branches
+        .map((item) => `<option value="${item.id}">${localize(item.name)}</option>`)
+        .join("");
+      switcher.value = selected;
+    }
+
+    document.querySelectorAll("[data-branch-field]").forEach((select) => {
+      if (canSwitch) {
+        // Preserve an in-progress edit's selection (editPlan/editOffer set
+        // .value directly); otherwise default a fresh form to whichever
+        // branch is currently being viewed.
+        const previousValue = select.value;
+        select.innerHTML = state.branches
+          .map((item) => `<option value="${item.id}">${localize(item.name)}</option>`)
+          .join("");
+        select.value =
+          previousValue && state.branches.some((item) => String(item.id) === previousValue)
+            ? previousValue
+            : getStoredViewBranchId() || String(state.me.branchId || "");
+        select.closest("[data-branch-field-wrap]")?.removeAttribute("hidden");
+        select.disabled = false;
+      } else {
+        select.innerHTML = state.me.branchName
+          ? `<option value="${state.me.branchId}">${localize(state.me.branchName)}</option>`
+          : "";
+        if (state.me.branchId) {
+          select.value = String(state.me.branchId);
+        }
+        select.disabled = true;
+      }
+    });
+  }
+
+  async function loadBranchesIfNeeded() {
+    if (!canSwitchBranchesClientSide()) {
+      state.branches = [];
+      return;
+    }
+    try {
+      const data = await window.GymApi.request("/api/v1/branches?pageSize=100");
+      state.branches = (data?.items || []).filter((branch) => branch.status === "active");
+    } catch (_error) {
+      state.branches = [];
+    }
+  }
+
+  function setupBranchSwitcher() {
+    document.querySelector("#branchSwitcher")?.addEventListener("change", async (event) => {
+      setStoredViewBranchId(event.target.value);
+      await load();
+    });
+  }
 
   const statusLabels = {
     active: "نشط",
@@ -845,6 +1002,7 @@
 
   function renderAll() {
     renderBrand();
+    renderBranchUi();
     renderStats();
     renderUsers();
     renderMemberships();
@@ -881,6 +1039,7 @@
         window.location.href = "/login.html";
         return;
       }
+      state.me = user;
       const [overview, publicData, plans, offers, siteImagesData, slides, messages, rbac, reportSummary, broadcasts] = await Promise.all([
         window.GymApi.request("/api/v1/admin/overview"),
         window.GymApi.bootstrap(),
@@ -909,6 +1068,7 @@
       if (state.selectedMessageId && !selectedMessage()) {
         state.selectedMessageId = null;
       }
+      await loadBranchesIfNeeded();
       renderAll();
       loadMembers(1);
     } catch (_error) {
@@ -994,6 +1154,11 @@
 
     return {
       id: String(payload.id || "").trim(),
+      // Branch-scoped admins get a disabled, pre-filled <select> (see
+      // renderBranchUi); a super_admin/branches:manage admin gets a real
+      // dropdown. Either way the server re-validates/forces this value --
+      // see resolveWriteBranchId in planController.js.
+      branchId: payload.branchId ? Number(payload.branchId) : undefined,
       nameEn: String(payload.nameEn || "").trim(),
       nameAr: String(payload.nameAr || "").trim(),
       descriptionEn: String(payload.descriptionEn || "").trim(),
@@ -1030,6 +1195,7 @@
     form.elements.isFeatured.checked = false;
     document.querySelector("#planSubmitButton").textContent = t("admin.savePlan");
     document.querySelector("#planCancelEdit")?.setAttribute("hidden", "");
+    renderBranchUi();
   }
 
   function findPlan(planId) {
@@ -1045,6 +1211,9 @@
     }
 
     form.elements.id.value = plan.id || "";
+    if (form.elements.branchId && plan.branchId != null) {
+      form.elements.branchId.value = String(plan.branchId);
+    }
     form.elements.nameEn.value = plan.name?.en || "";
     form.elements.nameAr.value = plan.name?.ar || "";
     form.elements.descriptionEn.value = plan.description?.en || "";
@@ -1068,6 +1237,8 @@
     const payload = formPayload(form);
     return {
       id: String(payload.id || "").trim(),
+      // See planPayload's branchId note -- same pattern, same server-side re-validation.
+      branchId: payload.branchId ? Number(payload.branchId) : undefined,
       titleEn: String(payload.titleEn || "").trim(),
       titleAr: String(payload.titleAr || "").trim(),
       badgeEn: String(payload.badgeEn || "").trim(),
@@ -1094,6 +1265,7 @@
     form.elements.isActive.checked = true;
     document.querySelector("#offerSubmitButton").textContent = t("admin.saveOffer");
     document.querySelector("#offerCancelEdit")?.setAttribute("hidden", "");
+    renderBranchUi();
   }
 
   function findOffer(offerId) {
@@ -1108,6 +1280,9 @@
       return;
     }
     form.elements.id.value = offer.id || "";
+    if (form.elements.branchId && offer.branchId != null) {
+      form.elements.branchId.value = String(offer.branchId);
+    }
     form.elements.titleEn.value = offer.title?.en || "";
     form.elements.titleAr.value = offer.title?.ar || "";
     form.elements.badgeEn.value = offer.badge?.en || "";
@@ -1371,7 +1546,8 @@
       }
 
       const currentPlanName = planName(plan) || `#${plan.id}`;
-      if (!window.confirm(`هل تريد حذف ${currentPlanName}؟ ستُزال من الموقع.`)) {
+      const branchSuffix = branchNameForId(plan.branchId) ? ` (${branchNameForId(plan.branchId)})` : "";
+      if (!window.confirm(`هل تريد حذف ${currentPlanName}${branchSuffix}؟ ستُزال من الموقع.`)) {
         return;
       }
 
@@ -1745,6 +1921,7 @@
     setupAnnounce();
     setupMembers();
     setupSession();
+    setupBranchSwitcher();
     load();
     window.addEventListener("languagechange", renderAll);
   }

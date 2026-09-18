@@ -6,6 +6,22 @@
     return accessToken;
   }
 
+  // The admin branch switcher (public/assets/js/admin-dashboard.js) persists
+  // the currently-viewed branch id here. Attaching it centrally means every
+  // admin API call picks it up automatically instead of each call site
+  // remembering to. Server-side, this header is only ever honored for an
+  // admin who can actually switch branches (super_admin or branches:manage);
+  // for anyone else it is silently ignored -- see
+  // src/security/branchAccess.js.
+  function viewBranchHeaders() {
+    try {
+      const branchId = window.localStorage.getItem("admin.viewBranchId");
+      return branchId ? { "X-View-Branch": branchId } : {};
+    } catch (_error) {
+      return {};
+    }
+  }
+
   function refreshToken() {
     return null;
   }
@@ -43,6 +59,7 @@
   async function rawRequest(path, options) {
     const headers = {
       "Content-Type": "application/json",
+      ...viewBranchHeaders(),
       ...(options?.headers || {})
     };
 
@@ -81,7 +98,10 @@
     const send = () =>
       fetch(path, {
         credentials: "include",
-        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+        headers: {
+          ...viewBranchHeaders(),
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
+        }
       });
 
     let response = await send();
