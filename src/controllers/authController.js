@@ -12,7 +12,10 @@ async function login(req, res) {
     identifier: req.body.identifier,
     password: req.body.password,
     ipAddress: req.ip,
-    userAgent: req.get("user-agent") || ""
+    userAgent: req.get("user-agent") || "",
+    // req.branch is resolved once (subdomain, dev-only override) by the
+    // branchResolver middleware -- never re-derived from client input here.
+    branchId: req.branch?.id || null
   });
 
   sendSession(res, result);
@@ -21,7 +24,8 @@ async function login(req, res) {
 async function register(req, res) {
   const result = await authService.register(req.body, {
     ipAddress: req.ip,
-    userAgent: req.get("user-agent") || ""
+    userAgent: req.get("user-agent") || "",
+    branchId: req.branch?.id || null
   });
   sendSession(res, result, 201);
 }
@@ -44,7 +48,8 @@ async function logout(req, res) {
 
 async function forgotPassword(req, res) {
   const result = await authService.forgotPassword(req.body.identifier, {
-    ipAddress: req.ip
+    ipAddress: req.ip,
+    branchId: req.branch?.id || null
   });
   res.json({ success: true, data: result });
 }
@@ -52,7 +57,8 @@ async function forgotPassword(req, res) {
 async function verifyOtp(req, res) {
   const data = await authService.verifyOtp({
     identifier: req.body.identifier,
-    otp: req.body.otp
+    otp: req.body.otp,
+    branchId: req.branch?.id || null
   });
   res.json({ success: true, data });
 }

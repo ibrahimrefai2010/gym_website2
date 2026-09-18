@@ -87,7 +87,11 @@ async function register(payload, context = {}) {
   assertSaudiPhone(payload.phone);
   assertStrongPassword(payload.password);
 
+  // Branch is resolved once per request by branchResolver (subdomain), never
+  // taken from the registration payload itself.
+  const branchId = context.branchId || 1;
   const user = await userRepository.createUser({
+    branchId,
     fullName: cleanString(payload.fullName, 160),
     email: cleanEmail(payload.email),
     phone: cleanPhone(payload.phone),
@@ -99,7 +103,7 @@ async function register(payload, context = {}) {
   }
 
   const tokens = await issueSession({
-    subject: { id: user.id, type: "user", role: null },
+    subject: { id: user.id, type: "user", role: null, branchId: user.branch_id || branchId },
     ipAddress: context.ipAddress,
     userAgent: context.userAgent
   });
@@ -113,12 +117,14 @@ async function register(payload, context = {}) {
   };
 }
 
-async function login({ identifier, password, ipAddress, userAgent }) {
+async function login({ identifier, password, ipAddress, userAgent, branchId = null }) {
   if (!identifier || !password) {
     throw createHttpError(400, "Email or phone and password are required.", "LOGIN_FIELDS_REQUIRED");
   }
 
-  const user = await userRepository.findForLogin(identifier);
+  // branchId (from the subdomain the request arrived on) scopes the lookup so
+  // a same-email account in the *other* branch never matches here.
+  const user = await userRepository.findForLogin(identifier, branchId);
   if (!user || user.status !== "active") {
     throw createHttpError(401, "Invalid credentials.", "INVALID_CREDENTIALS");
   }
@@ -129,7 +135,7 @@ async function login({ identifier, password, ipAddress, userAgent }) {
   }
 
   const tokens = await issueSession({
-    subject: { id: user.id, type: "user", role: null },
+    subject: { id: user.id, type: "user", role: null, branchId: user.branch_id ?? branchId },
     ipAddress,
     userAgent
   });
@@ -159,7 +165,7 @@ async function adminLogin({ identifier, password, ipAddress, userAgent }) {
   }
 
   const tokens = await issueSession({
-    subject: { id: admin.id, type: "admin", role: admin.role },
+    subject: { id: admin.id, type: "admin", role: admin.role, branchId: admin.branch_id ?? null },
     ipAddress,
     userAgent
   });
@@ -203,6 +209,9 @@ async function refresh(refreshToken, context = {}) {
   if (subject.type === "admin") {
     subject.role = principal.role;
   }
+  // Always re-derive from the DB principal (freshest truth), never trust the
+  // old token's branchId claim.
+  subject.branchId = principal.branch_id != null ? Number(principal.branch_id) : null;
 
   const accessToken = signAccessToken(subject);
   const nextRefreshToken = signRefreshToken(subject);
@@ -255,12 +264,14 @@ async function forgotPassword(identifier, context = {}) {
     return { accepted: true };
   }
 
+  const branchId = context.branchId || 1;
   const normalized = normalizeIdentifier(identifier);
-  const user = await userRepository.findByEmailOrPhone(normalized).catch(() => null);
+  const user = await userRepository.findByEmailOrPhone(normalized, branchId).catch(() => null);
   if (user && user.status === "active") {
     const otp = String(crypto.randomInt(100000, 1000000));
     await tokenRepository.storeOtp({
       identifier: normalized,
+      branchId,
       otp,
       purpose: "reset_password",
       expiresAt: otpExpiry(),
@@ -275,19 +286,21 @@ async function forgotPassword(identifier, context = {}) {
   };
 }
 
-async function verifyOtp({ identifier, otp }) {
+async function verifyOtp({ identifier, otp, branchId = null }) {
   if (!identifier || !otp) {
     throw createHttpError(400, "Identifier and OTP are required.", "OTP_FIELDS_REQUIRED");
   }
 
+  const resolvedBranchId = branchId || 1;
   const normalized = normalizeIdentifier(identifier);
-  const user = await userRepository.findByEmailOrPhone(normalized);
+  const user = await userRepository.findByEmailOrPhone(normalized, resolvedBranchId);
   if (!user || user.status !== "active") {
     throw createHttpError(401, "Invalid or expired OTP.", "OTP_INVALID");
   }
 
   const otpId = await tokenRepository.verifyOtp({
     identifier: normalized,
+    branchId: resolvedBranchId,
     otp: cleanString(otp, 6),
     purpose: "reset_password"
   });

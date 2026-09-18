@@ -34,7 +34,7 @@ async function findForLogin(identifier) {
   ensureDatabase();
   const normalized = String(identifier || "").trim().toLowerCase();
   const rows = await query(
-    `SELECT id, full_name, email, phone, role, status, password_hash, must_change_password, last_login_at
+    `SELECT id, branch_id, full_name, email, phone, role, status, password_hash, must_change_password, last_login_at
      FROM admin_users
      WHERE deleted_at IS NULL AND LOWER(email) = ?
      LIMIT 1`,
@@ -46,7 +46,7 @@ async function findForLogin(identifier) {
 async function findById(id) {
   ensureDatabase();
   const rows = await query(
-    `SELECT id, full_name, email, phone, role, status, must_change_password, last_login_at
+    `SELECT id, branch_id, full_name, email, phone, role, status, must_change_password, last_login_at
      FROM admin_users
      WHERE id = ? AND deleted_at IS NULL
      LIMIT 1`,

@@ -38,19 +38,30 @@ function mapSlide(slide) {
   };
 }
 
-async function listSlides({ includeInactive = false } = {}) {
+async function listSlides({ includeInactive = false, branchId = "" } = {}) {
   if (!hasDatabaseConfig()) {
     return fallbackSlides();
   }
 
-  const where = includeInactive ? "" : "WHERE is_active = 1";
+  const where = [];
+  if (!includeInactive) where.push("is_active = 1");
+  // branch_id is nullable: NULL rows apply to every branch (today's rows, all
+  // still unscoped). A future branch-specific row (branch_id = ?) is included
+  // alongside them -- actual per-branch slides are a later seeding phase.
+  const params = [];
+  if (branchId) {
+    where.push("(branch_id = ? OR branch_id IS NULL)");
+    params.push(branchId);
+  }
+  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   let rows = [];
   try {
     rows = await query(
-      `SELECT id, image_url, fallback_image_url, title_en, title_ar, body_en, body_ar, sort_order, is_active
+      `SELECT id, branch_id, image_url, fallback_image_url, title_en, title_ar, body_en, body_ar, sort_order, is_active
        FROM slider_images
-       ${where}
-       ORDER BY sort_order ASC, id DESC`
+       ${whereSql}
+       ORDER BY sort_order ASC, id DESC`,
+      params
     );
   } catch (_error) {
     return fallbackSlides();

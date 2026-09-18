@@ -44,13 +44,16 @@ function toCamel(row) {
   return out;
 }
 
-async function get() {
+// Two branches, two separate VAT registrations -> one business_settings row
+// per branch (branch_id UNIQUE). branchId defaults to 1 (Main) so pre-branch
+// callers keep working unchanged.
+async function get(branchId = 1) {
   ensureDatabase();
-  const rows = await query("SELECT * FROM business_settings WHERE id = 1 LIMIT 1");
+  const rows = await query("SELECT * FROM business_settings WHERE branch_id = ? LIMIT 1", [branchId || 1]);
   return toCamel(rows[0] || null);
 }
 
-async function update(payload = {}, adminId = null) {
+async function update(payload = {}, adminId = null, branchId = 1) {
   ensureDatabase();
   const set = [];
   const params = [];
@@ -75,13 +78,14 @@ async function update(payload = {}, adminId = null) {
   }
 
   if (set.length === 0) {
-    return get();
+    return get(branchId);
   }
 
   set.push("updated_by = ?");
   params.push(adminId);
-  await query(`UPDATE business_settings SET ${set.join(", ")} WHERE id = 1`, params);
-  return get();
+  params.push(branchId || 1);
+  await query(`UPDATE business_settings SET ${set.join(", ")} WHERE branch_id = ?`, params);
+  return get(branchId);
 }
 
 module.exports = { get, update };

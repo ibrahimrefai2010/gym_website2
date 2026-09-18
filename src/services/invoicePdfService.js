@@ -42,7 +42,12 @@ async function loadInvoiceContext(invoiceId) {
   if (!found) {
     throw createHttpError(404, "Invoice not found.", "INVOICE_NOT_FOUND");
   }
-  const [seller, names] = await Promise.all([businessSettingsRepository.get(), gymNames()]);
+  // Seller identity must come from *this invoice's* branch, not always the
+  // global/Main one -- each branch has its own VAT/CR registration.
+  const [seller, names] = await Promise.all([
+    businessSettingsRepository.get(found.invoice.branch_id || 1),
+    gymNames()
+  ]);
   return { invoice: found.invoice, items: found.items, seller: seller || {}, names };
 }
 

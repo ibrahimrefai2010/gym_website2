@@ -83,10 +83,10 @@ async function save(req, res) {
   }
 
   if (resource === "plans") {
-    data = await adminRepository.savePlan(req.body);
+    data = await adminRepository.savePlan({ ...req.body, branchId: req.body.branchId || req.user?.branchId });
     await createLog("admin", req.user?.id, req.body.id ? "plan.update" : "plan.create", "plans", data?.id || req.body.id || null, null, req.ip);
   } else if (resource === "offers") {
-    data = await adminRepository.saveOffer(req.body);
+    data = await adminRepository.saveOffer({ ...req.body, branchId: req.body.branchId || req.user?.branchId });
     await createLog("admin", req.user?.id, req.body.id ? "offer.update" : "offer.create", "offers", data?.id || req.body.id || null, null, req.ip);
   } else if (resource === "settings") {
     data = await adminRepository.saveSetting(req.body, req.user?.id);

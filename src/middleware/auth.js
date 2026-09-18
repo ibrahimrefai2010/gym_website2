@@ -33,7 +33,10 @@ async function authenticate(req, _res, next) {
       id: Number(payload.sub),
       type: payload.type,
       role: payload.type === "admin" ? principal.role : "member",
-      mustChangePassword: payload.type === "admin" ? Boolean(principal.must_change_password) : false
+      mustChangePassword: payload.type === "admin" ? Boolean(principal.must_change_password) : false,
+      // Always the DB-sourced value (freshest truth), never the JWT claim --
+      // a client cannot spoof its own branch by holding an older token.
+      branchId: principal.branch_id != null ? Number(principal.branch_id) : null
     };
     return next();
   } catch (error) {
@@ -74,7 +77,8 @@ async function authenticateMedia(req, _res, next) {
       id: Number(payload.sub),
       type: payload.type,
       role: payload.type === "admin" ? principal.role : "member",
-      mustChangePassword: payload.type === "admin" ? Boolean(principal.must_change_password) : false
+      mustChangePassword: payload.type === "admin" ? Boolean(principal.must_change_password) : false,
+      branchId: principal.branch_id != null ? Number(principal.branch_id) : null
     };
     return next();
   } catch (error) {

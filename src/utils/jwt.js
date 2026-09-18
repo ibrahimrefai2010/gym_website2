@@ -7,7 +7,11 @@ function signAccessToken(subject) {
     {
       sub: Number(subject.id),
       type: subject.type,
-      role: subject.type === "admin" ? subject.role : null
+      role: subject.type === "admin" ? subject.role : null,
+      // Convenience claim only -- req.user.branchId is always re-derived from
+      // the DB principal on every authenticated request (see middleware/auth.js),
+      // so a stale/forged claim here can never grant cross-branch access.
+      branchId: subject.branchId ?? null
     },
     env.jwtAccessSecret,
     { expiresIn: env.jwtAccessExpiry }
@@ -20,6 +24,7 @@ function signRefreshToken(subject) {
       sub: Number(subject.id),
       type: subject.type,
       role: subject.type === "admin" ? subject.role : null,
+      branchId: subject.branchId ?? null,
       // Unique per issue so two tokens minted in the same second (e.g. login
       // immediately followed by a refresh) never collide on token_hash.
       jti: crypto.randomBytes(16).toString("hex")
@@ -35,6 +40,7 @@ function signResetToken(user, jti) {
       sub: Number(user.id),
       type: "password_reset",
       role: null,
+      branchId: user.branch_id ?? user.branchId ?? null,
       jti
     },
     env.jwtAccessSecret,

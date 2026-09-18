@@ -30,38 +30,69 @@ function ensureDatabase() {
   }
 }
 
-// ZATCA requires a gap-free sequence. Owner decision: reset per Hijri year.
-// The counter row is locked and incremented inside the same transaction as the
-// invoice INSERT, so a rollback also rolls back the number -> no gaps, no reuse.
-async function allocateInvoiceNumber(connection, issuedAt) {
+// A short, stable per-branch tag for the invoice number (e.g. 'main' -> 'M',
+// 'women' -> 'W'). Falls back to the first letter of the numeric id if a
+// branch somehow has no code (should not happen -- branches.code is NOT NULL).
+function branchTag(code, branchId) {
+  const source = String(code || "").trim();
+  return source ? source[0].toUpperCase() : `B${branchId}`;
+}
+
+// ZATCA requires a gap-free sequence, and the two branches have separate VAT
+// registrations -> each branch keeps its own independent, gap-free Hijri-year
+// sequence (invoice_counters PK is (branch_id, hijri_year)). The counter row
+// is locked and incremented inside the same transaction as the invoice
+// INSERT, so a rollback also rolls back the number -> no gaps, no reuse.
+//
+// Number format: INV-<BRANCHTAG>-<hijriYear>-<6-digit seq>, e.g.
+// INV-M-1447-000001 (Main) / INV-W-1447-000001 (Women's). This format only
+// applies to invoices minted from here on -- existing INV-<year>-<seq> rows
+// (issued before branching existed) are never renumbered or reformatted
+// (forward-only, same rule as the original Hijri-year numbering).
+async function allocateInvoiceNumber(connection, issuedAt, branchId) {
+  if (!branchId) {
+    throw createHttpError(422, "An invoice must be allocated to a branch.", "INVOICE_BRANCH_REQUIRED");
+  }
   const year = hijriYear(issuedAt);
-  // Bump (and create) the per-year counter; the upsert takes the row lock so
-  // concurrent creates serialise here.
+
+  const [branchRows] = await connection.execute("SELECT code FROM branches WHERE id = ? LIMIT 1", [branchId]);
+  if (!branchRows[0]) {
+    throw createHttpError(422, "Invoice branch not found.", "INVOICE_BRANCH_NOT_FOUND");
+  }
+  const tag = branchTag(branchRows[0].code, branchId);
+
+  // Bump (and create) the per-branch, per-year counter; the upsert takes the
+  // row lock so concurrent creates for the same branch serialise here (a
+  // concurrent create for a *different* branch is unaffected).
   await connection.execute(
-    `INSERT INTO invoice_counters (hijri_year, last_seq) VALUES (?, 1)
+    `INSERT INTO invoice_counters (branch_id, hijri_year, last_seq) VALUES (?, ?, 1)
      ON DUPLICATE KEY UPDATE last_seq = last_seq + 1`,
-    [year]
+    [branchId, year]
   );
   const [ctrRows] = await connection.execute(
-    "SELECT last_seq FROM invoice_counters WHERE hijri_year = ? FOR UPDATE",
-    [year]
+    "SELECT last_seq FROM invoice_counters WHERE branch_id = ? AND hijri_year = ? FOR UPDATE",
+    [branchId, year]
   );
   let seq = Number(ctrRows[0].last_seq);
 
-  // Self-heal: if the counter fell behind the actual invoices (restore from
-  // backup, manual edit), jump ahead of the highest used sequence so we never
-  // hand out a number that already exists.
+  // Self-heal: if the counter fell behind this branch's actual invoices
+  // (restore from backup, manual edit), jump ahead of the highest used
+  // sequence *for this branch* so we never hand out a number that already
+  // exists.
   const [maxRows] = await connection.execute(
-    "SELECT COALESCE(MAX(invoice_seq), 0) AS max_seq FROM invoices WHERE hijri_year = ?",
-    [year]
+    "SELECT COALESCE(MAX(invoice_seq), 0) AS max_seq FROM invoices WHERE branch_id = ? AND hijri_year = ?",
+    [branchId, year]
   );
   const needed = Number(maxRows[0].max_seq) + 1;
   if (needed > seq) {
     seq = needed;
-    await connection.execute("UPDATE invoice_counters SET last_seq = ? WHERE hijri_year = ?", [seq, year]);
+    await connection.execute(
+      "UPDATE invoice_counters SET last_seq = ? WHERE branch_id = ? AND hijri_year = ?",
+      [seq, branchId, year]
+    );
   }
 
-  return { year, seq, number: `INV-${year}-${String(seq).padStart(6, "0")}` };
+  return { year, seq, number: `INV-${tag}-${year}-${String(seq).padStart(6, "0")}` };
 }
 
 function lineTotals(item) {
@@ -184,9 +215,11 @@ async function createInvoice(payload, adminId = null) {
 
   const issuedAt = payload.issuedAt ? new Date(payload.issuedAt) : new Date();
   const issueDate = payload.issueDate || issuedAt.toISOString().slice(0, 10);
+  const branchId = payload.branchId || 1;
 
-  // ZATCA Phase 1 QR — seller identity comes from business_settings.
-  const seller = await businessSettingsRepository.get();
+  // ZATCA Phase 1 QR — seller identity comes from this invoice's own
+  // branch's business_settings row (two branches, two VAT registrations).
+  const seller = await businessSettingsRepository.get(branchId);
   if (!seller || !/^\d{15}$/.test(String(seller.vatNumber || ""))) {
     throw createHttpError(
       422,
@@ -207,7 +240,7 @@ async function createInvoice(payload, adminId = null) {
   return transaction(async (connection) => {
     const allocated = payload.invoiceNumber
       ? { number: payload.invoiceNumber, year: null, seq: null }
-      : await allocateInvoiceNumber(connection, issuedAt);
+      : await allocateInvoiceNumber(connection, issuedAt, branchId);
 
     const [result] = await connection.execute(
       `INSERT INTO invoices
@@ -218,7 +251,7 @@ async function createInvoice(payload, adminId = null) {
          notes, metadata, created_by, updated_by)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        payload.branchId || 1,
+        branchId,
         payload.userId,
         payload.membershipId || null,
         allocated.number,

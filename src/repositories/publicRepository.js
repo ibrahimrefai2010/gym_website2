@@ -15,13 +15,27 @@ async function optionalRows(sql, params = []) {
   }
 }
 
-async function getDatabaseBootstrap() {
+async function getDatabaseBootstrap(branchId = null) {
   const [plans, offers, settings, slides, homepageRows] = await Promise.all([
-    planRepository.listPlans(),
-    offerRepository.listOffers(),
-    settingsRepository.publicSettings(),
-    sliderRepository.listSlides(),
-    optionalRows("SELECT section_key, title_en, title_ar, body_en, body_ar FROM homepage_text")
+    planRepository.listPlans({ branchId }),
+    offerRepository.listOffers({ branchId }),
+    settingsRepository.publicSettings(branchId),
+    sliderRepository.listSlides({ branchId }),
+    // homepage_text rows are nullable branch_id ("applies to all branches");
+    // a branch-specific override (branch_id = ?) takes priority when present.
+    // Global (NULL) rows are ordered first so the reduce() below lets a
+    // later, branch-specific row for the same section_key overwrite it.
+    branchId
+      ? optionalRows(
+          `SELECT section_key, title_en, title_ar, body_en, body_ar
+           FROM homepage_text
+           WHERE branch_id = ? OR branch_id IS NULL
+           ORDER BY (branch_id IS NULL) DESC`,
+          [branchId]
+        )
+      : optionalRows(
+          "SELECT section_key, title_en, title_ar, body_en, body_ar FROM homepage_text WHERE branch_id IS NULL"
+        )
   ]);
 
   const homepage = homepageRows.reduce((result, row) => {
@@ -52,7 +66,9 @@ async function getDatabaseBootstrap() {
   };
 }
 
-async function getBootstrap() {
+// branchId is resolved once by branchResolver middleware (req.branch.id) for
+// public requests and passed in here -- never re-derived per call.
+async function getBootstrap(branchId = null) {
   const homepage = {
     ...fallbackData.homepage,
     about: {
@@ -65,7 +81,9 @@ async function getBootstrap() {
   };
 
   if (!hasDatabaseConfig()) {
-    const settings = await settingsRepository.publicSettings();
+    // Known limitation of DB-less fallback mode: only the Main branch
+    // experience is available (fallbackData.js is the Main branch baseline).
+    const settings = await settingsRepository.publicSettings(branchId);
     const dynamic = settingsRepository.settingsToBootstrap(settings);
     return {
       ...fallbackData,
@@ -77,7 +95,7 @@ async function getBootstrap() {
     };
   }
 
-  const data = await getDatabaseBootstrap();
+  const data = await getDatabaseBootstrap(branchId);
   return {
     ...data,
     homepage: {

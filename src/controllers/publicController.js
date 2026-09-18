@@ -3,8 +3,8 @@ const memberPortalService = require("../services/memberPortalService");
 const { createHttpError } = require("../utils/httpError");
 const { env } = require("../config/env");
 
-async function bootstrap(_req, res) {
-  const data = await publicRepository.getBootstrap();
+async function bootstrap(req, res) {
+  const data = await publicRepository.getBootstrap(req.branch?.id || null);
   res.json({ success: true, data });
 }
 

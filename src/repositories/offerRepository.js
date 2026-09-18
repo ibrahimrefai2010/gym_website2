@@ -19,6 +19,7 @@ function isCurrent(offer) {
 function mapOffer(offer) {
   return {
     id: offer.id,
+    branchId: offer.branch_id != null ? Number(offer.branch_id) : null,
     title: { en: offer.title_en, ar: offer.title_ar },
     body: { en: offer.body_en, ar: offer.body_ar },
     description: { en: offer.body_en, ar: offer.body_ar },
@@ -37,8 +38,9 @@ function mapOffer(offer) {
   };
 }
 
-async function listOffers({ includeInactive = false } = {}) {
+async function listOffers({ includeInactive = false, branchId = "" } = {}) {
   if (!hasDatabaseConfig()) {
+    // Fallback demo data is the Main branch's baseline only (see fallbackData.js).
     const offers = fallbackData.offers.map((offer, index) => ({
       ...offer,
       description: offer.body,
@@ -53,16 +55,20 @@ async function listOffers({ includeInactive = false } = {}) {
     return includeInactive ? offers : offers.filter(isCurrent);
   }
 
-  const where = includeInactive
-    ? "WHERE deleted_at IS NULL"
-    : "WHERE expires_at > UTC_TIMESTAMP() AND is_active = 1 AND deleted_at IS NULL";
+  const where = [includeInactive ? "deleted_at IS NULL" : "expires_at > UTC_TIMESTAMP() AND is_active = 1 AND deleted_at IS NULL"];
+  const params = [];
+  if (branchId) {
+    where.push("branch_id = ?");
+    params.push(branchId);
+  }
   const rows = await query(
-    `SELECT id, title_en, title_ar, body_en, body_ar, image_url, discount_value,
+    `SELECT id, branch_id, title_en, title_ar, body_en, body_ar, image_url, discount_value,
       badge_en, badge_ar, button_text_en, button_text_ar, button_url, starts_at,
       expires_at, sort_order, is_active
      FROM offers
-     ${where}
-     ORDER BY sort_order ASC, id DESC`
+     WHERE ${where.join(" AND ")}
+     ORDER BY sort_order ASC, id DESC`,
+    params
   );
 
   return rows.map(mapOffer);
@@ -83,16 +89,23 @@ async function saveOffer(payload) {
   }
   const discountValue = assertPositiveNumber(payload.discountValue || 0, "Offer discount", { allowZero: true });
   const imageUrl = cleanImageReference(payload.imageUrl || "", "Offer image URL");
+  // Every offer belongs to exactly one branch -- a promo meant for both
+  // branches is two separate offer rows (decision 3, same rule as plans).
+  const branchId = Number(payload.branchId);
+  if (!Number.isInteger(branchId) || branchId < 1) {
+    throw createHttpError(422, "Offer branchId is required.", "OFFER_BRANCH_REQUIRED");
+  }
 
   if (payload.id) {
     const result = await query(
       `UPDATE offers
-       SET title_en = ?, title_ar = ?, body_en = ?, body_ar = ?, image_url = ?,
+       SET branch_id = ?, title_en = ?, title_ar = ?, body_en = ?, body_ar = ?, image_url = ?,
          discount_value = ?, badge_en = ?, badge_ar = ?, button_text_en = ?,
          button_text_ar = ?, button_url = ?, starts_at = ?, expires_at = ?,
          sort_order = ?, is_active = ?, updated_at = UTC_TIMESTAMP()
        WHERE id = ? AND deleted_at IS NULL`,
       [
+        branchId,
         titleEn,
         titleAr,
         bodyEn,
@@ -119,11 +132,12 @@ async function saveOffer(payload) {
 
   const result = await query(
     `INSERT INTO offers
-      (title_en, title_ar, body_en, body_ar, image_url, discount_value, badge_en,
+      (branch_id, title_en, title_ar, body_en, body_ar, image_url, discount_value, badge_en,
        badge_ar, button_text_en, button_text_ar, button_url, starts_at, expires_at,
        sort_order, is_active)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
+      branchId,
       titleEn,
       titleAr,
       bodyEn,

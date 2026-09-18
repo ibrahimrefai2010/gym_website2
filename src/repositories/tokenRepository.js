@@ -132,26 +132,30 @@ async function rotateRefreshToken({ oldToken, newToken, subject, expiresAt, ipAd
   }
 }
 
-async function storeOtp({ identifier, otp, purpose, expiresAt, ipAddress }) {
+// otp_tokens is keyed on the raw identifier (email/phone), not a user_id FK,
+// so it must carry its own branch_id: once (branch_id, email) uniqueness lets
+// the same email exist in two branches, an OTP issued for one branch's
+// account must never verify against the other branch's same-email account.
+async function storeOtp({ identifier, otp, purpose, expiresAt, ipAddress, branchId = 1 }) {
   ensureDatabase();
   const hash = await bcrypt.hash(otp, 12);
   const result = await query(
-    `INSERT INTO otp_tokens (identifier, token_hash, purpose, expires_at, ip_address)
-     VALUES (?, ?, ?, ?, ?)`,
-    [identifier, hash, purpose, expiresAt, ipAddress || null]
+    `INSERT INTO otp_tokens (identifier, branch_id, token_hash, purpose, expires_at, ip_address)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [identifier, branchId || 1, hash, purpose, expiresAt, ipAddress || null]
   );
   return result.insertId;
 }
 
-async function verifyOtp({ identifier, otp, purpose }) {
+async function verifyOtp({ identifier, otp, purpose, branchId = 1 }) {
   ensureDatabase();
   const rows = await query(
     `SELECT id, token_hash
      FROM otp_tokens
-     WHERE identifier = ? AND purpose = ? AND used_at IS NULL AND expires_at > UTC_TIMESTAMP()
+     WHERE identifier = ? AND branch_id = ? AND purpose = ? AND used_at IS NULL AND expires_at > UTC_TIMESTAMP()
      ORDER BY created_at DESC
      LIMIT 5`,
-    [identifier, purpose]
+    [identifier, branchId || 1, purpose]
   );
 
   for (const row of rows) {

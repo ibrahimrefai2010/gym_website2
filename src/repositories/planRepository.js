@@ -14,6 +14,7 @@ function mapPlan(plan) {
   const original = Number(plan.original_price || price);
   return {
     id: plan.id,
+    branchId: plan.branch_id != null ? Number(plan.branch_id) : null,
     name: { en: plan.name_en, ar: plan.name_ar },
     description: { en: plan.description_en, ar: plan.description_ar },
     durationDays: Number(plan.duration_days || 0),
@@ -33,20 +34,25 @@ function mapPlan(plan) {
   };
 }
 
-async function listPlans({ includeInactive = false } = {}) {
+async function listPlans({ includeInactive = false, branchId = "" } = {}) {
   if (!hasDatabaseConfig()) {
+    // Fallback demo data is the Main branch's baseline only (see fallbackData.js).
     return includeInactive ? fallbackData.plans : fallbackData.plans.filter((plan) => plan.isActive !== false);
   }
 
-  const where = includeInactive
-    ? "WHERE deleted_at IS NULL"
-    : "WHERE is_active = 1 AND deleted_at IS NULL";
+  const where = [includeInactive ? "deleted_at IS NULL" : "is_active = 1 AND deleted_at IS NULL"];
+  const params = [];
+  if (branchId) {
+    where.push("branch_id = ?");
+    params.push(branchId);
+  }
   const rows = await query(
-    `SELECT id, name_en, name_ar, description_en, description_ar, duration_days,
+    `SELECT id, branch_id, name_en, name_ar, description_en, description_ar, duration_days,
       bonus_days, price, original_price, is_active, is_featured, sort_order
      FROM plans
-     ${where}
-     ORDER BY sort_order ASC, id DESC`
+     WHERE ${where.join(" AND ")}
+     ORDER BY sort_order ASC, id DESC`,
+    params
   );
 
   return rows.map(mapPlan);
@@ -71,15 +77,22 @@ async function savePlan(payload) {
   const bonusDays = assertPositiveNumber(payload.bonusDays || payload.bonus_days || 0, "Plan bonus days", { allowZero: true });
   const price = assertPositiveNumber(payload.priceDiscounted || payload.price, "Plan price");
   const originalPrice = assertPositiveNumber(payload.originalPrice || payload.priceOriginal || price, "Original plan price");
+  // Every plan belongs to exactly one branch (no NULL-branch "both" tier) --
+  // a promo meant for both branches is two separate plan rows.
+  const branchId = Number(payload.branchId);
+  if (!Number.isInteger(branchId) || branchId < 1) {
+    throw createHttpError(422, "Plan branchId is required.", "PLAN_BRANCH_REQUIRED");
+  }
 
   if (payload.id) {
     await query(
       `UPDATE plans
-       SET name_en = ?, name_ar = ?, description_en = ?, description_ar = ?,
+       SET branch_id = ?, name_en = ?, name_ar = ?, description_en = ?, description_ar = ?,
          duration_days = ?, bonus_days = ?, price = ?, original_price = ?,
          is_active = ?, is_featured = ?, sort_order = ?, updated_at = UTC_TIMESTAMP()
        WHERE id = ? AND deleted_at IS NULL`,
       [
+        branchId,
         nameEn,
         nameAr,
         descriptionEn,
@@ -103,10 +116,11 @@ async function savePlan(payload) {
 
   const result = await query(
     `INSERT INTO plans
-      (name_en, name_ar, description_en, description_ar, duration_days, bonus_days,
+      (branch_id, name_en, name_ar, description_en, description_ar, duration_days, bonus_days,
        price, original_price, is_active, is_featured, sort_order)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
+      branchId,
       nameEn,
       nameAr,
       descriptionEn,

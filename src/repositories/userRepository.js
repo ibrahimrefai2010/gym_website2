@@ -26,30 +26,53 @@ function publicUser(row) {
   };
 }
 
-async function findForLogin(identifier) {
+// `branchId` is optional so existing/internal callers that don't yet care
+// about branch isolation keep working; auth flows (which do care) always
+// pass it. When provided, a same-email/phone account in a different branch
+// will not match -- required once (branch_id, email)/(branch_id, phone)
+// uniqueness allows the same identifier to exist in more than one branch.
+async function findForLogin(identifier, branchId = null) {
   ensureDatabase();
   const normalized = String(identifier || "").trim().toLowerCase();
   const phone = String(identifier || "").replace(/[^\d+]/g, "");
+  const where = [
+    "deleted_at IS NULL",
+    "(LOWER(email) = ? OR REPLACE(REPLACE(phone, '+', ''), ' ', '') = REPLACE(?, '+', ''))"
+  ];
+  const params = [normalized, phone];
+  if (branchId) {
+    where.push("branch_id = ?");
+    params.push(branchId);
+  }
   const rows = await query(
-    `SELECT id, full_name, email, phone, member_code, status, password_hash
+    `SELECT id, branch_id, full_name, email, phone, member_code, status, password_hash
      FROM users
-     WHERE deleted_at IS NULL AND (LOWER(email) = ? OR REPLACE(REPLACE(phone, '+', ''), ' ', '') = REPLACE(?, '+', ''))
+     WHERE ${where.join(" AND ")}
      LIMIT 1`,
-    [normalized, phone]
+    params
   );
   return rows[0] || null;
 }
 
-async function findByEmailOrPhone(identifier) {
+async function findByEmailOrPhone(identifier, branchId = null) {
   ensureDatabase();
   const normalized = String(identifier || "").trim().toLowerCase();
   const phone = String(identifier || "").replace(/[^\d+]/g, "");
+  const where = [
+    "deleted_at IS NULL",
+    "(LOWER(email) = ? OR REPLACE(REPLACE(phone, '+', ''), ' ', '') = REPLACE(?, '+', ''))"
+  ];
+  const params = [normalized, phone];
+  if (branchId) {
+    where.push("branch_id = ?");
+    params.push(branchId);
+  }
   const rows = await query(
-    `SELECT id, full_name, email, phone, member_code, status, password_hash
+    `SELECT id, branch_id, full_name, email, phone, member_code, status, password_hash
      FROM users
-     WHERE deleted_at IS NULL AND (LOWER(email) = ? OR REPLACE(REPLACE(phone, '+', ''), ' ', '') = REPLACE(?, '+', ''))
+     WHERE ${where.join(" AND ")}
      LIMIT 1`,
-    [normalized, phone]
+    params
   );
   return rows[0] || null;
 }
@@ -57,7 +80,7 @@ async function findByEmailOrPhone(identifier) {
 async function findById(id, options = {}) {
   ensureDatabase();
   const rows = await query(
-    `SELECT id, full_name, email, phone, member_code, status${options.includePassword ? ", password_hash" : ""}
+    `SELECT id, branch_id, full_name, email, phone, member_code, status${options.includePassword ? ", password_hash" : ""}
      FROM users
      WHERE id = ? AND deleted_at IS NULL
      LIMIT 1`,
@@ -71,9 +94,9 @@ async function createUser(payload) {
   const passwordHash = await hashPassword(payload.password);
   try {
     const result = await query(
-      `INSERT INTO users (full_name, email, phone, password_hash, status)
-       VALUES (?, ?, ?, ?, 'active')`,
-      [payload.fullName, payload.email, payload.phone, passwordHash]
+      `INSERT INTO users (branch_id, full_name, email, phone, password_hash, status)
+       VALUES (?, ?, ?, ?, ?, 'active')`,
+      [payload.branchId || 1, payload.fullName, payload.email, payload.phone, passwordHash]
     );
     await query(
       `UPDATE users

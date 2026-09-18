@@ -80,7 +80,16 @@ async function getSetting(key, fallback = null) {
   return rows[0] ? castSetting(rows[0]) : fallback;
 }
 
-async function publicSettings() {
+// NOTE: `settings` is keyed on `key_name` alone (global, not per-branch) --
+// giving it real per-branch storage would mean restructuring its primary key
+// (key_name is not branch-scoped today) and touching every other call site
+// that assumes one global row per key. That restructure isn't part of the
+// owner-confirmed branch decisions (only plans/offers/invoices/business
+// registration were), so it's deferred to the branch-content seeding phase.
+// `branchId` is accepted here for forward-compatibility with callers that
+// already pass it (e.g. publicRepository.getBootstrap) but is currently a
+// no-op: every branch reads the same global settings row.
+async function publicSettings(_branchId = null) {
   if (!hasDatabaseConfig()) {
     return publicKeys.reduce((result, key) => {
       result[key] = fallbackSettings[key];
