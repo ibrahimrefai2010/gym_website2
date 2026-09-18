@@ -36,6 +36,7 @@
           <button type="button" data-admin-tab="slider" data-i18n="admin.slider">السلايدر</button>
           <button type="button" data-admin-tab="contact" data-i18n="admin.contactInfo">معلومات التواصل</button>
           <button type="button" data-admin-tab="messages" data-i18n="admin.messages">الرسائل</button>
+          <button type="button" data-admin-tab="tasks" data-i18n="admin.tasks">المهام</button>
           <button type="button" data-admin-tab="announce" data-i18n="admin.announce">الإشعارات والإعلانات</button>
           <button type="button" data-admin-tab="settings" data-i18n="admin.settings">الإعدادات</button>
           <button type="button" data-admin-tab="payments" data-i18n="admin.payments">المدفوعات</button>
@@ -70,6 +71,13 @@
 
         <section class="admin-section is-active" data-admin-section="overview">
           <div class="admin-grid" id="adminStats"></div>
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.tasks.widgetTitle">المهام المفتوحة</h2>
+              <span class="badge" id="taskWidgetOverdueBadge">0 متأخرة</span>
+            </div>
+            <div class="admin-grid" id="taskWidgetStats"></div>
+          </div>
           <div class="admin-panel">
             <div class="admin-panel-header">
               <h2 data-i18n="admin.statistics">الإحصائيات</h2>
@@ -397,6 +405,110 @@
               <button class="btn small danger" type="button" data-message-detail-action="delete">حذف</button>
             </div>
             <p class="form-message" id="messageActionStatus" aria-live="polite"></p>
+          </div>
+        </section>
+
+        <section class="admin-section" data-admin-section="tasks">
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.tasks">المهام</h2>
+              <div class="inline-actions">
+                <button class="btn small secondary" type="button" id="taskMyTasksToggle" data-i18n="admin.tasks.myTasks">مهامي</button>
+              </div>
+            </div>
+            <form class="member-filter" id="taskFilterForm">
+              <select id="taskStatusFilter" name="status">
+                <option value="" data-i18n="admin.tasks.anyStatus">كل الحالات</option>
+                <option value="open" data-i18n="admin.tasks.statusOpen">مفتوحة</option>
+                <option value="in_progress" data-i18n="admin.tasks.statusInProgress">قيد التنفيذ</option>
+                <option value="done" data-i18n="admin.tasks.statusDone">مكتملة</option>
+                <option value="cancelled" data-i18n="admin.tasks.statusCancelled">ملغاة</option>
+              </select>
+              <select id="taskPriorityFilter" name="priority">
+                <option value="" data-i18n="admin.tasks.anyPriority">كل الأولويات</option>
+                <option value="low" data-i18n="admin.tasks.priorityLow">منخفضة</option>
+                <option value="medium" data-i18n="admin.tasks.priorityMedium">متوسطة</option>
+                <option value="high" data-i18n="admin.tasks.priorityHigh">عالية</option>
+                <option value="urgent" data-i18n="admin.tasks.priorityUrgent">عاجلة</option>
+              </select>
+              <select id="taskAssigneeFilter" name="assignedTo">
+                <option value="" data-i18n="admin.tasks.anyAssignee">كل المسؤولين</option>
+              </select>
+              <input type="date" id="taskDueBeforeFilter" name="dueBefore" data-i18n-label="admin.tasks.dueBefore">
+              <button class="btn small secondary" type="submit" data-i18n="admin.tasks.search">بحث</button>
+            </form>
+            <div class="table-shell">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>الرقم</th>
+                    <th data-i18n="admin.tasks.titleCol">العنوان</th>
+                    <th data-i18n="admin.tasks.assignee">المسؤول</th>
+                    <th data-i18n="admin.tasks.priorityCol">الأولوية</th>
+                    <th data-i18n="table.status">الحالة</th>
+                    <th data-i18n="admin.tasks.due">الاستحقاق</th>
+                    <th data-i18n="admin.tasks.actionsCol">الإجراءات</th>
+                  </tr>
+                </thead>
+                <tbody id="taskRows"></tbody>
+              </table>
+            </div>
+            <div class="pager" id="taskPager"></div>
+          </div>
+
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.tasks.formTitle">مهمة جديدة</h2>
+            </div>
+            <form class="auth-form" id="taskForm" novalidate>
+              <input id="taskId" name="id" type="hidden">
+              <div class="form-grid">
+                <div class="field" data-branch-field-wrap>
+                  <label for="taskBranchId" data-i18n="admin.branch.field">الفرع</label>
+                  <select id="taskBranchId" name="branchId" data-branch-field></select>
+                </div>
+                <div class="field full">
+                  <label for="taskTitle" data-i18n="admin.tasks.titleCol">العنوان</label>
+                  <input id="taskTitle" name="title" required maxlength="200">
+                </div>
+                <div class="field full">
+                  <label for="taskDescription" data-i18n="admin.tasks.description">الوصف</label>
+                  <textarea id="taskDescription" name="description"></textarea>
+                </div>
+                <div class="field">
+                  <label for="taskAssignedTo" data-i18n="admin.tasks.assignee">المسؤول</label>
+                  <select id="taskAssignedTo" name="assignedTo">
+                    <option value="" data-i18n="admin.tasks.unassigned">غير مسند</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="taskDueDate" data-i18n="admin.tasks.due">الاستحقاق</label>
+                  <input id="taskDueDate" name="dueDate" type="date">
+                </div>
+                <div class="field">
+                  <label for="taskPriority" data-i18n="admin.tasks.priorityCol">الأولوية</label>
+                  <select id="taskPriority" name="priority">
+                    <option value="low" data-i18n="admin.tasks.priorityLow">منخفضة</option>
+                    <option value="medium" selected data-i18n="admin.tasks.priorityMedium">متوسطة</option>
+                    <option value="high" data-i18n="admin.tasks.priorityHigh">عالية</option>
+                    <option value="urgent" data-i18n="admin.tasks.priorityUrgent">عاجلة</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="taskLinkedType" data-i18n="admin.tasks.linkedType">نوع السجل المرتبط</label>
+                  <input id="taskLinkedType" name="linkedResourceType" placeholder="membership, message, payment...">
+                </div>
+                <div class="field">
+                  <label for="taskLinkedId" data-i18n="admin.tasks.linkedId">رقم السجل المرتبط</label>
+                  <input id="taskLinkedId" name="linkedResourceId" type="number" min="1">
+                </div>
+              </div>
+              <div class="form-actions">
+                <button class="btn" type="submit" id="taskSubmitButton" data-i18n="admin.tasks.save">حفظ المهمة</button>
+                <button class="btn secondary" type="button" id="taskCancelEdit" hidden data-i18n="admin.cancelEdit">إلغاء التعديل</button>
+              </div>
+              <p class="form-message" id="taskMessage" aria-live="polite"></p>
+            </form>
           </div>
         </section>
 

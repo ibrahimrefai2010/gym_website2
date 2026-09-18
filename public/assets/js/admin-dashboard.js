@@ -13,7 +13,10 @@
     reportSummary: null,
     aiAnswer: null,
     selectedRoleKey: null,
-    selectedMessageId: null
+    selectedMessageId: null,
+    tasks: { items: [], pagination: {} },
+    taskFilters: { status: "", priority: "", assignedTo: "", dueBefore: "" },
+    taskMyTasksOnly: false
   };
 
   const VIEW_BRANCH_STORAGE_KEY = "admin.viewBranchId";
@@ -189,7 +192,14 @@
     manager: "مدير",
     admin: "مشرف",
     super_admin: "مدير عام",
-    info: "معلومة"
+    info: "معلومة",
+    open: "مفتوحة",
+    in_progress: "قيد التنفيذ",
+    done: "مكتملة",
+    low: "منخفضة",
+    medium: "متوسطة",
+    high: "عالية",
+    urgent: "عاجلة"
   };
 
   function localize(value) {
@@ -508,6 +518,108 @@
     });
   }
 
+  function setupTasks() {
+    document.querySelector("#taskFilterForm")?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      state.taskFilters = {
+        status: document.querySelector("#taskStatusFilter")?.value || "",
+        priority: document.querySelector("#taskPriorityFilter")?.value || "",
+        assignedTo: document.querySelector("#taskAssigneeFilter")?.value || "",
+        dueBefore: document.querySelector("#taskDueBeforeFilter")?.value || ""
+      };
+      loadTasks(1);
+    });
+
+    document.querySelector("#taskMyTasksToggle")?.addEventListener("click", (event) => {
+      state.taskMyTasksOnly = !state.taskMyTasksOnly;
+      event.currentTarget.classList.toggle("is-active", state.taskMyTasksOnly);
+      loadTasks(1);
+    });
+
+    document.querySelector("#taskPager")?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-task-page]");
+      if (button && !button.disabled) {
+        loadTasks(Number(button.dataset.taskPage));
+      }
+    });
+
+    document.querySelector("#taskRows")?.addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-task-action]");
+      if (!button) {
+        return;
+      }
+      const task = findTask(button.dataset.taskId);
+      if (!task) {
+        setMessage("#taskMessage", "Task not found. Refresh and try again.", false);
+        return;
+      }
+      const action = button.dataset.taskAction;
+
+      if (action === "edit") {
+        editTask(task);
+        return;
+      }
+
+      if (action === "cancel") {
+        if (!window.confirm(t("admin.tasks.confirmCancel"))) {
+          return;
+        }
+        try {
+          await window.GymApi.request(`/api/v1/tasks/${encodeURIComponent(task.id)}/cancel`, { method: "PATCH" });
+          await loadTasks(state.tasks.pagination?.page || 1);
+          setMessage("#taskMessage", t("form.saved"), true);
+        } catch (error) {
+          setMessage("#taskMessage", error.message || t("admin.readOnly"), false);
+        }
+        return;
+      }
+
+      if (action === "close") {
+        // Lightweight prompt for an optional outcome note, matching this
+        // codebase's existing window.confirm-adjacent interaction style
+        // (see plan/message delete confirmations) rather than a modal.
+        const outcomeNote = window.prompt(t("admin.tasks.outcomePrompt"), "");
+        if (outcomeNote === null) {
+          return; // user cancelled the prompt
+        }
+        try {
+          await window.GymApi.request(`/api/v1/tasks/${encodeURIComponent(task.id)}/close`, {
+            method: "PATCH",
+            body: JSON.stringify({ outcomeNote: outcomeNote.trim() || undefined })
+          });
+          await loadTasks(state.tasks.pagination?.page || 1);
+          setMessage("#taskMessage", t("form.saved"), true);
+        } catch (error) {
+          setMessage("#taskMessage", error.message || t("admin.readOnly"), false);
+        }
+      }
+    });
+
+    document.querySelector("#taskForm")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const payload = taskPayload(event.currentTarget);
+      const isEditing = Boolean(payload.id);
+      const taskId = encodeURIComponent(payload.id);
+      try {
+        await window.GymApi.request(isEditing ? `/api/v1/tasks/${taskId}` : "/api/v1/tasks", {
+          method: isEditing ? "PATCH" : "POST",
+          body: JSON.stringify(payload)
+        });
+        resetTaskForm();
+        setMessage("#taskMessage", t("form.saved"), true);
+        await loadTasks(state.tasks.pagination?.page || 1);
+        renderTaskWidget();
+      } catch (error) {
+        setMessage("#taskMessage", error.message || t("admin.readOnly"), false);
+      }
+    });
+
+    document.querySelector("#taskCancelEdit")?.addEventListener("click", () => {
+      resetTaskForm();
+      setMessage("#taskMessage", "", true);
+    });
+  }
+
   function renderMemberships() {
     setHtml(
       "#membershipRows",
@@ -578,6 +690,181 @@
         )
         .join("")
     );
+  }
+
+  function renderTaskWidget() {
+    const tasks = state.overview?.tasks || { byPriority: {}, overdue: 0 };
+    const byPriority = tasks.byPriority || {};
+    const priorityKeyMap = {
+      low: "admin.tasks.priorityLow",
+      medium: "admin.tasks.priorityMedium",
+      high: "admin.tasks.priorityHigh",
+      urgent: "admin.tasks.priorityUrgent"
+    };
+    setHtml(
+      "#taskWidgetStats",
+      Object.entries(priorityKeyMap)
+        .map(
+          ([priority, key]) => `
+            <article class="metric-card">
+              <span>${escapeHtml(t(key))}</span>
+              <strong>${escapeHtml(String(byPriority[priority] || 0))}</strong>
+            </article>
+          `
+        )
+        .join("")
+    );
+    const badge = document.querySelector("#taskWidgetOverdueBadge");
+    if (badge) {
+      badge.textContent = `${tasks.overdue || 0} ${t("admin.tasks.overdue")}`;
+    }
+  }
+
+  function renderTaskAssigneeOptions() {
+    const accounts = state.overview?.adminAccounts || [];
+    const options = accounts
+      .map((account) => `<option value="${escapeHtml(account.id)}">${escapeHtml(account.username || account.email)}</option>`)
+      .join("");
+
+    const filterSelect = document.querySelector("#taskAssigneeFilter");
+    if (filterSelect) {
+      const previous = filterSelect.value;
+      filterSelect.innerHTML = `<option value="">${escapeHtml(t("admin.tasks.anyAssignee"))}</option>${options}`;
+      filterSelect.value = previous;
+    }
+
+    const formSelect = document.querySelector("#taskAssignedTo");
+    if (formSelect) {
+      const previous = formSelect.value;
+      formSelect.innerHTML = `<option value="">${escapeHtml(t("admin.tasks.unassigned"))}</option>${options}`;
+      formSelect.value = previous;
+    }
+  }
+
+  function renderTasks() {
+    const data = state.tasks || { items: [], pagination: {} };
+    const items = data.items || [];
+    if (!items.length) {
+      setHtml("#taskRows", `<tr><td colspan="7">${escapeHtml(t("admin.tasks.none"))}</td></tr>`);
+      setHtml("#taskPager", "");
+      return;
+    }
+    setHtml(
+      "#taskRows",
+      items
+        .map((task) => {
+          const canAct = task.status === "open" || task.status === "in_progress";
+          return `
+            <tr>
+              <td>${escapeHtml(task.id)}</td>
+              <td>${escapeHtml(task.title)}</td>
+              <td>${escapeHtml(task.assignedToName || t("admin.tasks.unassigned"))}</td>
+              <td>${escapeHtml(statusLabel(task.priority))}</td>
+              <td>${escapeHtml(statusLabel(task.status))}</td>
+              <td>${task.dueDate ? formatDate(task.dueDate) : "—"}</td>
+              <td>
+                <div class="row-actions">
+                  <button class="btn small secondary" type="button" data-task-action="edit" data-task-id="${escapeHtml(task.id)}">${escapeHtml(t("admin.tasks.edit"))}</button>
+                  ${canAct ? `<button class="btn small secondary" type="button" data-task-action="close" data-task-id="${escapeHtml(task.id)}">${escapeHtml(t("admin.tasks.close"))}</button>` : ""}
+                  ${canAct ? `<button class="btn small danger" type="button" data-task-action="cancel" data-task-id="${escapeHtml(task.id)}">${escapeHtml(t("admin.tasks.cancel"))}</button>` : ""}
+                </div>
+              </td>
+            </tr>
+          `;
+        })
+        .join("")
+    );
+
+    const page = data.pagination?.page || 1;
+    const total = data.pagination?.total || items.length;
+    const pageSize = data.pagination?.pageSize || 20;
+    const pages = Math.max(Math.ceil(total / pageSize), 1);
+    setHtml(
+      "#taskPager",
+      pages > 1
+        ? `<button class="btn small secondary" type="button" data-task-page="${page - 1}" ${page <= 1 ? "disabled" : ""}>${escapeHtml(t("portal.prev"))}</button>
+           <span>${escapeHtml(t("portal.pageLabel").replace("{n}", page))} / ${pages}</span>
+           <button class="btn small secondary" type="button" data-task-page="${page + 1}" ${page >= pages ? "disabled" : ""}>${escapeHtml(t("portal.next"))}</button>`
+        : ""
+    );
+  }
+
+  async function loadTasks(page = 1) {
+    const f = state.taskFilters || {};
+    const params = new URLSearchParams({ page: String(page), pageSize: "20" });
+    if (f.status) params.set("status", f.status);
+    if (f.priority) params.set("priority", f.priority);
+    if (f.dueBefore) params.set("dueBefore", f.dueBefore);
+    // "My Tasks" quick filter overrides the assignee dropdown while active.
+    if (state.taskMyTasksOnly && state.me?.id) {
+      params.set("assignedTo", state.me.id);
+    } else if (f.assignedTo) {
+      params.set("assignedTo", f.assignedTo);
+    }
+    try {
+      state.tasks = await window.GymApi.request(`/api/v1/tasks?${params.toString()}`);
+    } catch (_error) {
+      state.tasks = { items: [], pagination: {} };
+    }
+    renderTasks();
+  }
+
+  function taskPayload(form) {
+    const payload = formPayload(form);
+    return {
+      id: String(payload.id || "").trim(),
+      // See planPayload's branchId note -- same pattern, same server-side
+      // re-validation via resolveWriteBranchId.
+      branchId: payload.branchId ? Number(payload.branchId) : undefined,
+      title: String(payload.title || "").trim(),
+      description: String(payload.description || "").trim(),
+      assignedTo: payload.assignedTo ? Number(payload.assignedTo) : null,
+      dueDate: payload.dueDate || null,
+      priority: payload.priority || "medium",
+      linkedResourceType: String(payload.linkedResourceType || "").trim() || null,
+      linkedResourceId: payload.linkedResourceId ? Number(payload.linkedResourceId) : null
+    };
+  }
+
+  function resetTaskForm() {
+    const form = document.querySelector("#taskForm");
+    if (!form) {
+      return;
+    }
+    form.reset();
+    form.elements.id.value = "";
+    form.elements.priority.value = "medium";
+    document.querySelector("#taskSubmitButton").textContent = t("admin.tasks.save");
+    document.querySelector("#taskCancelEdit")?.setAttribute("hidden", "");
+    renderBranchUi();
+  }
+
+  function findTask(taskId) {
+    return (state.tasks.items || []).find((task) => String(task.id) === String(taskId));
+  }
+
+  function editTask(task) {
+    const form = document.querySelector("#taskForm");
+    if (!form || !task) {
+      return;
+    }
+    form.elements.id.value = task.id || "";
+    if (form.elements.branchId && task.branchId != null) {
+      form.elements.branchId.value = String(task.branchId);
+    }
+    form.elements.title.value = task.title || "";
+    form.elements.description.value = task.description || "";
+    if (form.elements.assignedTo) {
+      form.elements.assignedTo.value = task.assignedTo != null ? String(task.assignedTo) : "";
+    }
+    form.elements.dueDate.value = dateInputValue(task.dueDate);
+    form.elements.priority.value = task.priority || "medium";
+    form.elements.linkedResourceType.value = task.linkedResourceType || "";
+    form.elements.linkedResourceId.value = task.linkedResourceId || "";
+    document.querySelector("#taskSubmitButton").textContent = t("admin.tasks.save");
+    document.querySelector("#taskCancelEdit")?.removeAttribute("hidden");
+    setMessage("#taskMessage", `Editing task ${task.id}`, true);
+    form.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function renderSlider() {
@@ -1004,6 +1291,7 @@
     renderBrand();
     renderBranchUi();
     renderStats();
+    renderTaskWidget();
     renderUsers();
     renderMemberships();
     renderPlans();
@@ -1016,6 +1304,8 @@
     renderAnnouncements();
     renderPayments();
     renderAdminAccounts();
+    renderTaskAssigneeOptions();
+    renderTasks();
     renderRbac();
     renderAiAssistant();
     renderLogs();
@@ -1071,6 +1361,7 @@
       await loadBranchesIfNeeded();
       renderAll();
       loadMembers(1);
+      loadTasks(1);
     } catch (_error) {
       window.GymApi.clearSession();
       window.location.href = "/login.html";
@@ -1920,6 +2211,7 @@
     setupExports();
     setupAnnounce();
     setupMembers();
+    setupTasks();
     setupSession();
     setupBranchSwitcher();
     load();
