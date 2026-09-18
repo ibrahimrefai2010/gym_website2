@@ -52,7 +52,10 @@ async function detail(req, res) {
   // By-id fetch bypasses list()'s branchId filter entirely unless checked
   // here too -- a branch-scoped admin who knows/guesses another branch's
   // customer id must get the same 404 as a nonexistent id, never the data.
-  await assertBranchOwnership(data, req, createHttpError(404, "Customer not found.", "CUSTOMER_NOT_FOUND"));
+  // getCustomer() returns { customer: { branchId, ... }, profile, ... }, not
+  // a flat row -- the branch id assertBranchOwnership needs lives at
+  // data.customer.branchId, not at the top level.
+  await assertBranchOwnership(data?.customer, req, createHttpError(404, "Customer not found.", "CUSTOMER_NOT_FOUND"));
   res.json({ success: true, data });
 }
 
@@ -78,7 +81,7 @@ async function create(req, res) {
 
 async function update(req, res) {
   const existing = await customerRepository.getCustomer(req.params.id);
-  await assertBranchOwnership(existing, req, createHttpError(404, "Customer not found.", "CUSTOMER_NOT_FOUND"));
+  await assertBranchOwnership(existing?.customer, req, createHttpError(404, "Customer not found.", "CUSTOMER_NOT_FOUND"));
   if (req.body.email) {
     assertEmail(req.body.email);
   }

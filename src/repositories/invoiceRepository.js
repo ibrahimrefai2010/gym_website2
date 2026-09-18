@@ -156,6 +156,15 @@ async function listInvoices({ page = 1, pageSize = 25, branchId = "", userId = "
   const limit = positiveInteger(pageSize, 25, 100);
   const currentPage = positiveInteger(page, 1, 1000000);
   const offset = (currentPage - 1) * limit;
+  // LIMIT/OFFSET as bound `?` params fails against mysql2's prepared
+  // statements (execute()) with ER_WRONG_ARGUMENTS -- reproduced against a
+  // real DB for the first time by this phase's new integration tests (this
+  // repository was previously only exercised by DB-less/direct-createInvoice
+  // tests, never through listInvoices). limit/offset are already
+  // server-computed, bounded integers (positiveInteger() above), never raw
+  // client input, so interpolating them directly is safe -- this matches
+  // the same pattern customerRepository.js and userRepository.js already
+  // use for their own LIMIT/OFFSET clauses.
   const rows = await query(
     `SELECT i.id, i.invoice_number, i.status, i.issue_date, i.due_date, i.total,
       i.paid_total, i.balance_due, i.currency, u.full_name AS customer, b.name_en AS branch
@@ -164,8 +173,8 @@ async function listInvoices({ page = 1, pageSize = 25, branchId = "", userId = "
      LEFT JOIN branches b ON b.id = i.branch_id
      WHERE ${where.join(" AND ")}
      ORDER BY i.issue_date DESC, i.id DESC
-     LIMIT ? OFFSET ?`,
-    [...params, limit, offset]
+     LIMIT ${limit} OFFSET ${offset}`,
+    params
   );
   const totalRows = await query(
     `SELECT COUNT(*) AS total FROM invoices i JOIN users u ON u.id = i.user_id WHERE ${where.join(" AND ")}`,

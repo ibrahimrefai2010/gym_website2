@@ -268,7 +268,20 @@ async function getCustomer(userId) {
   const [users, memberships, invoices, payments, attendance, emergencyContacts, medicalRecords, notes, documents] =
     await Promise.all([
       query(
-        `SELECT u.*, b.name_en AS branch_name, cp.*
+        // NOT `cp.*` -- users and customer_profiles both have id/branch_id/
+        // created_by/updated_by/deleted_at/created_at/updated_at columns, so
+        // a trailing `cp.*` silently overwrites u.*'s values with
+        // customer_profiles' (an unmatched LEFT JOIN row is NULL, so a
+        // customer with no profile row yet -- e.g. anyone who only ever
+        // self-registered and was never touched by the admin CRM -- came
+        // back with id/branch_id/created_at/updated_at all NULL). Select
+        // only the customer_profiles columns actually needed below, none of
+        // which collide with a users column.
+        `SELECT u.*, b.name_en AS branch_name,
+          cp.national_id, cp.passport_number, cp.residency_number, cp.nationality, cp.gender,
+          cp.birth_date, cp.occupation, cp.company, cp.address, cp.city, cp.country,
+          cp.height_cm, cp.weight_kg, cp.body_fat_percent, cp.goals, cp.trainer_notes, cp.tags,
+          cp.metadata, cp.avatar_path
          FROM users u
          LEFT JOIN branches b ON b.id = u.branch_id
          LEFT JOIN customer_profiles cp ON cp.user_id = u.id AND cp.deleted_at IS NULL
