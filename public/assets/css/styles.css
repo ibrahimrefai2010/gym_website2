@@ -1591,6 +1591,49 @@ html[dir="rtl"] .hero::after {
   overflow-wrap: anywhere;
 }
 
+.lead-pipeline {
+  margin-block-start: 24px;
+  padding-block-start: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.lead-pipeline h3,
+.lead-pipeline h4 {
+  margin-block-end: 12px;
+}
+
+.lead-notes-list {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.lead-notes-list li {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius);
+  background: #0c0c0c;
+  padding: 10px 14px;
+  color: rgba(255, 255, 255, 0.86);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.lead-notes-list .lead-note-meta {
+  display: block;
+  margin-block-end: 4px;
+  color: rgba(255, 255, 255, 0.52);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.lead-notes-empty {
+  color: rgba(255, 255, 255, 0.48);
+  font-size: 13px;
+  margin: 0 0 16px;
+}
+
 .metric-card,
 .admin-panel,
 .admin-app .table-shell {

@@ -382,12 +382,45 @@
               <h2 data-i18n="admin.messages">الرسائل</h2>
               <span class="badge" id="unreadBadge">0 غير مقروءة</span>
             </div>
+            <form class="member-filter" id="messageFilterForm">
+              <select id="messageStatusFilter" name="status">
+                <option value="" data-i18n="admin.tasks.anyStatus">كل الحالات</option>
+                <option value="unread" data-i18n="admin.messages.statusUnread">غير مقروءة</option>
+                <option value="read" data-i18n="admin.messages.statusRead">مقروءة</option>
+                <option value="archived" data-i18n="admin.messages.statusArchived">مؤرشفة</option>
+              </select>
+              <select id="leadStatusFilter" name="leadStatus">
+                <option value="" data-i18n="admin.leads.anyStatus">كل حالات العميل المحتمل</option>
+                <option value="new" data-i18n="admin.leads.statusNew">جديد</option>
+                <option value="contacted" data-i18n="admin.leads.statusContacted">تم التواصل</option>
+                <option value="converted" data-i18n="admin.leads.statusConverted">محوّل</option>
+                <option value="rejected" data-i18n="admin.leads.statusRejected">مرفوض</option>
+              </select>
+              <select id="leadAssigneeFilter" name="assignedTo">
+                <option value="" data-i18n="admin.tasks.anyAssignee">كل المسؤولين</option>
+              </select>
+              <input type="search" id="messageSearchFilter" name="search" data-i18n-placeholder="admin.leads.searchPlaceholder" placeholder="بحث بالاسم أو البريد أو الجوال">
+              <button class="btn small secondary" type="submit" data-i18n="admin.tasks.search">بحث</button>
+            </form>
             <div class="table-shell">
               <table class="table">
-                <thead><tr><th>المرسل</th><th data-i18n="field.phone">الجوال</th><th>البريد</th><th>الموضوع</th><th data-i18n="table.status">الحالة</th><th data-i18n="table.date">التاريخ</th><th>الإجراءات</th></tr></thead>
+                <thead>
+                  <tr>
+                    <th>المرسل</th>
+                    <th data-i18n="field.phone">الجوال</th>
+                    <th>البريد</th>
+                    <th>الموضوع</th>
+                    <th data-i18n="table.status">الحالة</th>
+                    <th data-i18n="admin.leads.statusCol">حالة العميل المحتمل</th>
+                    <th data-i18n="admin.tasks.assignee">المسؤول</th>
+                    <th data-i18n="table.date">التاريخ</th>
+                    <th>الإجراءات</th>
+                  </tr>
+                </thead>
                 <tbody id="messageRows"></tbody>
               </table>
             </div>
+            <div class="pager" id="messagePager"></div>
           </div>
           <div class="admin-panel message-detail" id="messageDetail" hidden>
             <div class="admin-panel-header">
@@ -405,6 +438,45 @@
               <button class="btn small danger" type="button" data-message-detail-action="delete">حذف</button>
             </div>
             <p class="form-message" id="messageActionStatus" aria-live="polite"></p>
+
+            <div class="lead-pipeline" id="leadPipeline">
+              <h3 data-i18n="admin.leads.pipelineTitle">إدارة العميل المحتمل</h3>
+              <div class="form-grid">
+                <label>
+                  <span data-i18n="admin.leads.statusCol">حالة العميل المحتمل</span>
+                  <select id="leadStatusSelect">
+                    <option value="new" data-i18n="admin.leads.statusNew">جديد</option>
+                    <option value="contacted" data-i18n="admin.leads.statusContacted">تم التواصل</option>
+                    <option value="converted" data-i18n="admin.leads.statusConverted">محوّل</option>
+                    <option value="rejected" data-i18n="admin.leads.statusRejected">مرفوض</option>
+                  </select>
+                </label>
+                <label>
+                  <span data-i18n="admin.tasks.assignee">المسؤول</span>
+                  <select id="leadAssigneeSelect">
+                    <option value="" data-i18n="admin.tasks.unassigned">غير مسند</option>
+                  </select>
+                </label>
+              </div>
+              <div class="form-actions">
+                <button class="btn small secondary" type="button" id="leadSaveButton" data-i18n="admin.leads.save">حفظ بيانات العميل المحتمل</button>
+                <button class="btn small" type="button" id="leadConvertButton" data-i18n="admin.leads.convert">تحويل إلى عضو</button>
+              </div>
+              <p class="form-message" id="leadPipelineStatus" aria-live="polite"></p>
+
+              <h4 data-i18n="admin.leads.notesTitle">ملاحظات المتابعة</h4>
+              <ul class="lead-notes-list" id="leadNotesList"></ul>
+              <div class="form-grid">
+                <label class="full-width">
+                  <span data-i18n="admin.leads.addNote">إضافة ملاحظة</span>
+                  <textarea id="leadNoteInput" rows="2" data-i18n-placeholder="admin.leads.notePlaceholder" placeholder="اكتب ملاحظة متابعة..."></textarea>
+                </label>
+              </div>
+              <div class="form-actions">
+                <button class="btn small secondary" type="button" id="leadNoteAddButton" data-i18n="admin.leads.addNote">إضافة ملاحظة</button>
+              </div>
+              <p class="form-message" id="leadNoteStatus" aria-live="polite"></p>
+            </div>
           </div>
         </section>
 

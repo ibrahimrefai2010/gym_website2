@@ -8,7 +8,9 @@
     offers: [],
     siteImages: null,
     slides: [],
-    messages: [],
+    messages: { items: [], pagination: {} },
+    messageFilters: { status: "", leadStatus: "", assignedTo: "", search: "" },
+    leadNotes: [],
     rbac: { roles: [], permissions: [], assignments: [] },
     reportSummary: null,
     aiAnswer: null,
@@ -199,7 +201,11 @@
     low: "منخفضة",
     medium: "متوسطة",
     high: "عالية",
-    urgent: "عاجلة"
+    urgent: "عاجلة",
+    new: "جديد",
+    contacted: "تم التواصل",
+    converted: "محوّل",
+    rejected: "مرفوض"
   };
 
   function localize(value) {
@@ -720,11 +726,18 @@
     }
   }
 
-  function renderTaskAssigneeOptions() {
+  // Shared by the Tasks assignee dropdowns and the Leads/CRM assignee
+  // dropdowns -- same data source (state.overview.adminAccounts), same
+  // "<option>" shape, just rendered into different <select> elements.
+  function adminAccountOptionsHtml() {
     const accounts = state.overview?.adminAccounts || [];
-    const options = accounts
+    return accounts
       .map((account) => `<option value="${escapeHtml(account.id)}">${escapeHtml(account.username || account.email)}</option>`)
       .join("");
+  }
+
+  function renderTaskAssigneeOptions() {
+    const options = adminAccountOptionsHtml();
 
     const filterSelect = document.querySelector("#taskAssigneeFilter");
     if (filterSelect) {
@@ -738,6 +751,24 @@
       const previous = formSelect.value;
       formSelect.innerHTML = `<option value="">${escapeHtml(t("admin.tasks.unassigned"))}</option>${options}`;
       formSelect.value = previous;
+    }
+  }
+
+  function renderLeadAssigneeOptions() {
+    const options = adminAccountOptionsHtml();
+
+    const filterSelect = document.querySelector("#leadAssigneeFilter");
+    if (filterSelect) {
+      const previous = filterSelect.value;
+      filterSelect.innerHTML = `<option value="">${escapeHtml(t("admin.tasks.anyAssignee"))}</option>${options}`;
+      filterSelect.value = previous;
+    }
+
+    const detailSelect = document.querySelector("#leadAssigneeSelect");
+    if (detailSelect) {
+      const previous = detailSelect.value;
+      detailSelect.innerHTML = `<option value="">${escapeHtml(t("admin.tasks.unassigned"))}</option>${options}`;
+      detailSelect.value = previous;
     }
   }
 
@@ -807,6 +838,29 @@
       state.tasks = { items: [], pagination: {} };
     }
     renderTasks();
+  }
+
+  // Leads/CRM (Part 2): same on-demand, filtered + paginated pattern as
+  // loadTasks above (replaces the old one-shot /api/v1/messages fetch inside
+  // load()'s Promise.all, which returned a flat, unfiltered array of up to
+  // 100 rows -- see messageRepository.listMessages for the new { items,
+  // pagination } shape this now consumes).
+  async function loadMessages(page = 1) {
+    const f = state.messageFilters || {};
+    const params = new URLSearchParams({ page: String(page), pageSize: "20" });
+    if (f.status) params.set("status", f.status);
+    if (f.leadStatus) params.set("leadStatus", f.leadStatus);
+    if (f.assignedTo) params.set("assignedTo", f.assignedTo);
+    if (f.search) params.set("search", f.search);
+    try {
+      state.messages = await window.GymApi.request(`/api/v1/messages?${params.toString()}`);
+    } catch (_error) {
+      state.messages = { items: [], pagination: {} };
+    }
+    if (state.selectedMessageId && !selectedMessage()) {
+      state.selectedMessageId = null;
+    }
+    renderMessages();
   }
 
   function taskPayload(form) {
@@ -966,17 +1020,36 @@
     );
   }
 
+  // Leads/CRM (Part 2): dashboard stat is server-computed across ALL
+  // messages (adminRepository.getOverview's "Unread messages" stat), not
+  // just the current filtered/paginated page -- unlike the old flat-array
+  // fetch (up to 100 rows), the Leads list is now paginated at 20/page, so
+  // counting the visible page would under-report.
+  function unreadMessagesCount() {
+    const stat = (state.overview?.stats || []).find((item) => item.label?.en === "Unread messages");
+    if (stat) {
+      return Number(stat.value || 0);
+    }
+    return (state.messages.items || []).filter((message) => message.status === "unread").length;
+  }
+
   function renderMessages() {
-    const messages = state.messages.length ? state.messages : state.overview?.messages || [];
-    const unread = messages.filter((message) => message.status === "unread").length;
+    const items = state.messages.items || [];
     const unreadBadge = document.querySelector("#unreadBadge");
     if (unreadBadge) {
-      unreadBadge.textContent = `${unread} غير مقروءة`;
+      unreadBadge.textContent = `${unreadMessagesCount()} غير مقروءة`;
+    }
+
+    if (!items.length) {
+      setHtml("#messageRows", `<tr><td colspan="9">${escapeHtml(t("admin.leads.none"))}</td></tr>`);
+      setHtml("#messagePager", "");
+      renderMessageDetail();
+      return;
     }
 
     setHtml(
       "#messageRows",
-      messages
+      items
         .map(
           (message) => `
             <tr>
@@ -985,6 +1058,8 @@
               <td>${escapeHtml(message.email)}</td>
               <td>${escapeHtml(message.subject)}</td>
               <td>${escapeHtml(statusLabel(message.status))}</td>
+              <td>${escapeHtml(statusLabel(message.leadStatus))}</td>
+              <td>${escapeHtml(message.assignedToName || t("admin.tasks.unassigned"))}</td>
               <td>${formatDate(message.createdAt || message.created_at)}</td>
               <td>
                 <div class="row-actions">
@@ -998,13 +1073,56 @@
         .join("")
     );
 
+    const data = state.messages;
+    const page = data.pagination?.page || 1;
+    const total = data.pagination?.total || items.length;
+    const pageSize = data.pagination?.pageSize || 20;
+    const pages = Math.max(Math.ceil(total / pageSize), 1);
+    setHtml(
+      "#messagePager",
+      pages > 1
+        ? `<button class="btn small secondary" type="button" data-message-page="${page - 1}" ${page <= 1 ? "disabled" : ""}>${escapeHtml(t("portal.prev"))}</button>
+           <span>${escapeHtml(t("portal.pageLabel").replace("{n}", page))} / ${pages}</span>
+           <button class="btn small secondary" type="button" data-message-page="${page + 1}" ${page >= pages ? "disabled" : ""}>${escapeHtml(t("portal.next"))}</button>`
+        : ""
+    );
+
     renderMessageDetail();
   }
 
   function selectedMessage() {
-    return (state.messages.length ? state.messages : state.overview?.messages || []).find(
-      (message) => String(message.id) === String(state.selectedMessageId)
-    );
+    return (state.messages.items || []).find((message) => String(message.id) === String(state.selectedMessageId));
+  }
+
+  function renderLeadNotes() {
+    const list = document.querySelector("#leadNotesList");
+    if (!list) {
+      return;
+    }
+    const notes = state.leadNotes || [];
+    if (!notes.length) {
+      list.innerHTML = `<li class="lead-notes-empty">${escapeHtml(t("admin.leads.notesNone"))}</li>`;
+      return;
+    }
+    list.innerHTML = notes
+      .map(
+        (note) => `
+          <li>
+            <span class="lead-note-meta">${escapeHtml(note.createdByName || t("admin.tasks.unassigned"))} · ${formatDate(note.createdAt)}</span>
+            ${escapeHtml(note.note)}
+          </li>
+        `
+      )
+      .join("");
+  }
+
+  async function loadLeadNotes(messageId) {
+    try {
+      state.leadNotes = await window.GymApi.request(`/api/v1/messages/${encodeURIComponent(messageId)}/notes`);
+    } catch (_error) {
+      state.leadNotes = [];
+    }
+    renderLeadNotes();
   }
 
   function renderMessageDetail() {
@@ -1032,6 +1150,29 @@
     );
     document.querySelector("#messageDetailBody").textContent = message.message || "";
     setMessage("#messageActionStatus", "", true);
+
+    renderLeadAssigneeOptions();
+    const leadStatusSelect = document.querySelector("#leadStatusSelect");
+    if (leadStatusSelect) {
+      leadStatusSelect.value = message.leadStatus || "new";
+    }
+    const leadAssigneeSelect = document.querySelector("#leadAssigneeSelect");
+    if (leadAssigneeSelect) {
+      leadAssigneeSelect.value = message.assignedTo != null ? String(message.assignedTo) : "";
+    }
+    const convertButton = document.querySelector("#leadConvertButton");
+    if (convertButton) {
+      convertButton.disabled = message.leadStatus === "converted";
+    }
+    setMessage("#leadPipelineStatus", "", true);
+    setMessage("#leadNoteStatus", "", true);
+    const noteInput = document.querySelector("#leadNoteInput");
+    if (noteInput) {
+      noteInput.value = "";
+    }
+    state.leadNotes = [];
+    renderLeadNotes();
+    loadLeadNotes(message.id);
   }
 
   function renderPayments() {
@@ -1305,6 +1446,7 @@
     renderPayments();
     renderAdminAccounts();
     renderTaskAssigneeOptions();
+    renderLeadAssigneeOptions();
     renderTasks();
     renderRbac();
     renderAiAssistant();
@@ -1330,14 +1472,13 @@
         return;
       }
       state.me = user;
-      const [overview, publicData, plans, offers, siteImagesData, slides, messages, rbac, reportSummary, broadcasts] = await Promise.all([
+      const [overview, publicData, plans, offers, siteImagesData, slides, rbac, reportSummary, broadcasts] = await Promise.all([
         window.GymApi.request("/api/v1/admin/overview"),
         window.GymApi.bootstrap(),
         window.GymApi.request("/api/v1/admin/plans"),
         window.GymApi.request("/api/v1/admin/offers"),
         window.GymApi.request("/api/v1/admin/siteImages"),
         window.GymApi.request("/api/v1/admin/slides"),
-        window.GymApi.request("/api/v1/messages"),
         window.GymApi.request("/api/v1/admin/rbac"),
         window.GymApi.request("/api/v1/reports/summary").catch(() => null),
         window.GymApi.request("/api/v1/admin/notificationBroadcasts").catch(() => [])
@@ -1349,19 +1490,19 @@
       state.offers = offers || publicData.offers || [];
       state.siteImages = siteImagesData || publicData.siteImages || null;
       state.slides = slides || publicData.slides || [];
-      state.messages = messages;
       state.rbac = rbac;
       state.reportSummary = reportSummary;
       if (state.selectedRoleKey && !state.rbac.roles?.some((role) => role.key === state.selectedRoleKey)) {
         state.selectedRoleKey = null;
       }
-      if (state.selectedMessageId && !selectedMessage()) {
-        state.selectedMessageId = null;
-      }
       await loadBranchesIfNeeded();
       renderAll();
       loadMembers(1);
       loadTasks(1);
+      // Leads/CRM (Part 2): loaded the same on-demand way as tasks -- see
+      // loadMessages's own comment for why this moved out of the Promise.all
+      // above.
+      loadMessages(1);
     } catch (_error) {
       window.GymApi.clearSession();
       window.location.href = "/login.html";
@@ -1944,6 +2085,49 @@
     });
   }
 
+  // Leads/CRM (Part 2) write helpers -- one small wrapper per new endpoint,
+  // same style as updateMessageStatus/deleteMessage above.
+  async function updateLeadFields(messageId, payload) {
+    return window.GymApi.request(`/api/v1/messages/${encodeURIComponent(messageId)}/lead`, {
+      method: "PATCH",
+      body: JSON.stringify(payload)
+    });
+  }
+
+  async function addLeadNote(messageId, note) {
+    return window.GymApi.request(`/api/v1/messages/${encodeURIComponent(messageId)}/notes`, {
+      method: "POST",
+      body: JSON.stringify({ note })
+    });
+  }
+
+  async function convertLead(messageId) {
+    return window.GymApi.request(`/api/v1/messages/${encodeURIComponent(messageId)}/convert`, {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+  }
+
+  function setupMessages() {
+    document.querySelector("#messageFilterForm")?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      state.messageFilters = {
+        status: document.querySelector("#messageStatusFilter")?.value || "",
+        leadStatus: document.querySelector("#leadStatusFilter")?.value || "",
+        assignedTo: document.querySelector("#leadAssigneeFilter")?.value || "",
+        search: document.querySelector("#messageSearchFilter")?.value || ""
+      };
+      loadMessages(1);
+    });
+
+    document.querySelector("#messagePager")?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-message-page]");
+      if (button && !button.disabled) {
+        loadMessages(Number(button.dataset.messagePage));
+      }
+    });
+  }
+
   function setupMessageActions() {
     document.querySelector("#messageRows")?.addEventListener("click", async (event) => {
       const button = event.target.closest("[data-message-action]");
@@ -1953,7 +2137,7 @@
 
       const messageId = button.dataset.messageId;
       const action = button.dataset.messageAction;
-      const message = (state.messages || []).find((item) => String(item.id) === String(messageId));
+      const message = (state.messages.items || []).find((item) => String(item.id) === String(messageId));
       if (!message) {
         setMessage("#messageActionStatus", "لم يتم العثور على الرسالة. حدّث الصفحة وحاول مرة أخرى.", false);
         return;
@@ -1972,7 +2156,7 @@
         if (state.selectedMessageId === messageId) {
           state.selectedMessageId = null;
         }
-        await load();
+        await loadMessages(state.messages.pagination?.page || 1);
       } catch (error) {
         button.disabled = false;
         setMessage("#messageActionStatus", error.message || "تعذر تحديث الرسالة.", false);
@@ -1988,30 +2172,103 @@
       }
 
       const actionButton = event.target.closest("[data-message-detail-action]");
-      if (!actionButton || !state.selectedMessageId) {
-        return;
-      }
-
-      const action = actionButton.dataset.messageDetailAction;
-      if (action === "delete" && !window.confirm("هل تريد حذف هذه الرسالة؟")) {
-        return;
-      }
-
-      actionButton.disabled = true;
-      try {
-        if (action === "delete") {
-          await deleteMessage(state.selectedMessageId);
-          state.selectedMessageId = null;
-          await load();
+      if (actionButton && state.selectedMessageId) {
+        const action = actionButton.dataset.messageDetailAction;
+        if (action === "delete" && !window.confirm("هل تريد حذف هذه الرسالة؟")) {
           return;
         }
 
-        await updateMessageStatus(state.selectedMessageId, action);
-        setMessage("#messageActionStatus", "تم تحديث الرسالة.", true);
-        await load();
-      } catch (error) {
-        actionButton.disabled = false;
-        setMessage("#messageActionStatus", error.message || "تعذر تحديث الرسالة.", false);
+        actionButton.disabled = true;
+        try {
+          if (action === "delete") {
+            await deleteMessage(state.selectedMessageId);
+            state.selectedMessageId = null;
+            await loadMessages(state.messages.pagination?.page || 1);
+            return;
+          }
+
+          await updateMessageStatus(state.selectedMessageId, action);
+          setMessage("#messageActionStatus", "تم تحديث الرسالة.", true);
+          await loadMessages(state.messages.pagination?.page || 1);
+        } catch (error) {
+          actionButton.disabled = false;
+          setMessage("#messageActionStatus", error.message || "تعذر تحديث الرسالة.", false);
+        }
+        return;
+      }
+
+      // Leads/CRM (Part 2) pipeline actions below -- all scoped to the
+      // currently-selected message (state.selectedMessageId), same as the
+      // plain inbox actions above.
+      if (event.target.closest("#leadSaveButton")) {
+        if (!state.selectedMessageId) {
+          return;
+        }
+        const button = event.target.closest("#leadSaveButton");
+        button.disabled = true;
+        try {
+          const leadStatus = document.querySelector("#leadStatusSelect")?.value || "new";
+          const assignedToValue = document.querySelector("#leadAssigneeSelect")?.value || "";
+          await updateLeadFields(state.selectedMessageId, {
+            leadStatus,
+            assignedTo: assignedToValue ? Number(assignedToValue) : null
+          });
+          setMessage("#leadPipelineStatus", t("form.saved"), true);
+          await loadMessages(state.messages.pagination?.page || 1);
+          state.selectedMessageId = String(state.selectedMessageId);
+          renderMessageDetail();
+        } catch (error) {
+          setMessage("#leadPipelineStatus", error.message || t("admin.readOnly"), false);
+        } finally {
+          button.disabled = false;
+        }
+        return;
+      }
+
+      if (event.target.closest("#leadConvertButton")) {
+        if (!state.selectedMessageId) {
+          return;
+        }
+        if (!window.confirm(t("admin.leads.confirmConvert"))) {
+          return;
+        }
+        const button = event.target.closest("#leadConvertButton");
+        button.disabled = true;
+        try {
+          await convertLead(state.selectedMessageId);
+          setMessage("#leadPipelineStatus", t("admin.leads.convertSuccess"), true);
+          await loadMessages(state.messages.pagination?.page || 1);
+          renderMessageDetail();
+        } catch (error) {
+          button.disabled = false;
+          setMessage("#leadPipelineStatus", error.message || t("admin.leads.convertFailed"), false);
+        }
+        return;
+      }
+
+      if (event.target.closest("#leadNoteAddButton")) {
+        if (!state.selectedMessageId) {
+          return;
+        }
+        const noteInput = document.querySelector("#leadNoteInput");
+        const note = (noteInput?.value || "").trim();
+        if (!note) {
+          return;
+        }
+        const button = event.target.closest("#leadNoteAddButton");
+        button.disabled = true;
+        try {
+          await addLeadNote(state.selectedMessageId, note);
+          if (noteInput) {
+            noteInput.value = "";
+          }
+          setMessage("#leadNoteStatus", t("form.saved"), true);
+          await loadLeadNotes(state.selectedMessageId);
+        } catch (error) {
+          setMessage("#leadNoteStatus", error.message || t("admin.readOnly"), false);
+        } finally {
+          button.disabled = false;
+        }
       }
     });
   }
@@ -2206,6 +2463,7 @@
     setupImageUploads();
     setupOfferActions();
     setupSlideActions();
+    setupMessages();
     setupMessageActions();
     setupRbacActions();
     setupExports();
