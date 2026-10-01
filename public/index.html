@@ -13,6 +13,8 @@
     <meta property="og:type" content="website">
     <meta property="og:image" content="/assets/images/hero-gym.png" data-site-og-image>
     <title>Muscle and Fitness Center | Premium Training Club</title>
+    <link rel="canonical" href="/" data-canonical>
+    <link rel="icon" href="/assets/logo.png" data-favicon>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -143,6 +145,10 @@
             <p data-i18n="plans.body">Each plan is clear, editable from the dashboard, and ready for future Stripe checkout.</p>
           </div>
           <div class="plans-grid" id="plansGrid" aria-live="polite"></div>
+          <div class="plan-compare reveal" id="planCompare" hidden>
+            <h3 data-i18n="compare.title">Compare plans</h3>
+            <div class="table-shell"><table class="compare-table" id="planCompareTable"></table></div>
+          </div>
         </div>
       </section>
 
@@ -179,6 +185,7 @@
               <button class="tab-button" type="button" role="tab" data-calc-tab="bmi" aria-selected="true" data-i18n="calculator.bmi">BMI</button>
               <button class="tab-button" type="button" role="tab" data-calc-tab="calories" aria-selected="false" data-i18n="calculator.calories">Calories</button>
               <button class="tab-button" type="button" role="tab" data-calc-tab="macros" aria-selected="false" data-i18n="calculator.macros">Macros</button>
+              <button class="tab-button" type="button" role="tab" data-calc-tab="bodyfat" aria-selected="false" data-i18n="calculator.bodyfat">Body fat</button>
             </div>
 
             <form class="calculator-panel is-active" id="bmiForm" data-calc-panel="bmi">
@@ -256,6 +263,36 @@
               <button class="btn" type="submit" data-i18n="form.calculate">Calculate</button>
               <div class="result-box" id="macroResult" aria-live="polite"></div>
             </form>
+
+            <form class="calculator-panel" id="bodyFatForm" data-calc-panel="bodyfat">
+              <div class="form-grid">
+                <div class="field">
+                  <label for="bfSex" data-i18n="field.sex">Sex</label>
+                  <select id="bfSex" name="sex">
+                    <option value="male" data-i18n="option.male">Male</option>
+                    <option value="female" data-i18n="option.female">Female</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="bfHeight" data-i18n="field.height">Height (cm)</label>
+                  <input id="bfHeight" name="height" type="number" min="120" max="230" value="178" required>
+                </div>
+                <div class="field">
+                  <label for="bfNeck" data-i18n="field.neck">Neck (cm)</label>
+                  <input id="bfNeck" name="neck" type="number" min="20" max="70" step="0.5" value="39" required>
+                </div>
+                <div class="field">
+                  <label for="bfWaist" data-i18n="field.waist">Waist at navel (cm)</label>
+                  <input id="bfWaist" name="waist" type="number" min="40" max="200" step="0.5" value="88" required>
+                </div>
+                <div class="field" data-female-only hidden>
+                  <label for="bfHip" data-i18n="field.hip">Hips (cm)</label>
+                  <input id="bfHip" name="hip" type="number" min="50" max="200" step="0.5" value="98">
+                </div>
+              </div>
+              <button class="btn" type="submit" data-i18n="form.calculate">Calculate</button>
+              <div class="result-box" id="bodyFatResult" aria-live="polite"></div>
+            </form>
           </div>
         </div>
       </section>
@@ -283,7 +320,7 @@
               <li><span data-i18n="contact.hours">Working hours</span><div id="workingHours"></div></li>
             </ul>
             <form class="auth-form" id="contactForm" novalidate>
-              <input type="text" name="website" style="display:none" tabindex="-1" autocomplete="off">
+              <div class="hp-field" aria-hidden="true"><label for="contactWebsite">Website</label><input id="contactWebsite" type="text" name="website" tabindex="-1" autocomplete="off"></div>
               <div class="form-grid">
                 <div class="field">
                   <label for="contactName" data-i18n="field.name">Full name</label>
@@ -309,7 +346,7 @@
               <button class="btn" type="submit" data-i18n="contact.send">Send message</button>
               <p class="form-message" id="contactMessageStatus" aria-live="polite"></p>
             </form>
-            <a class="btn" data-whatsapp-link href="#" data-i18n="contact.whatsapp">WhatsApp</a>
+            <a class="btn" data-whatsapp-link href="#" data-i18n="contact.whatsapp" target="_blank" rel="noopener">WhatsApp</a>
           </div>
         </div>
       </section>
@@ -325,16 +362,29 @@
           <span>© <span data-current-year></span> <span data-brand-name></span></span>
           <span data-i18n="footer.rights">All rights reserved.</span>
           <a href="/privacy.html" data-i18n="footer.privacy">Privacy Notice</a>
+          <button class="link-button" type="button" data-cookie-settings data-i18n="consent.settings">Cookie settings</button>
         </div>
+        <ul class="social-links" id="socialLinks" aria-label="Social media"></ul>
       </div>
     </footer>
 
-    <a class="whatsapp-float" data-whatsapp-link href="#" data-i18n="contact.whatsapp">WhatsApp</a>
+    <a class="whatsapp-float" data-whatsapp-link href="#" data-i18n="contact.whatsapp" target="_blank" rel="noopener">WhatsApp</a>
+
+    <div class="cookie-banner" id="cookieBanner" role="dialog" aria-modal="false" aria-labelledby="cookieTitle" hidden>
+      <p id="cookieTitle" class="cookie-title" data-i18n="consent.title">Cookies on this site</p>
+      <p data-i18n="consent.body">We use essential cookies to run the site. With your permission we also use analytics cookies (Google Analytics, Meta Pixel) to understand visits. You can change this anytime from "Cookie settings".</p>
+      <div class="cookie-actions">
+        <button class="btn small" type="button" data-cookie-choice="accept" data-i18n="consent.accept">Accept analytics</button>
+        <button class="btn small secondary" type="button" data-cookie-choice="reject" data-i18n="consent.reject">Essential only</button>
+        <a href="/privacy.html" data-i18n="footer.privacy">Privacy Notice</a>
+      </div>
+    </div>
 
     <script src="/assets/js/data.js"></script>
     <script src="/assets/js/i18n.js"></script>
     <script src="/assets/js/ux-copy.js"></script>
     <script src="/assets/js/api.js?v=2.1.0"></script>
+    <script src="/assets/js/consent.js"></script>
     <script src="/assets/js/main.js"></script>
   </body>
 </html>

@@ -127,6 +127,10 @@
       return;
     }
 
+    if (!(state.data.plans || []).length) {
+      root.innerHTML = `<p class="empty-note">${escapeHtml(t("plans.empty"))}</p>`;
+      return;
+    }
     root.innerHTML = (state.data.plans || [])
       .map((plan) => {
         const features = (plan.features?.[i18n().currentLang()] || plan.features?.en || [])
@@ -207,12 +211,73 @@
     observeReveals();
   }
 
+  // Plan comparison (Part 2 §2.7.5): the resolved branch's plans as columns,
+  // every feature any plan lists as a row.
+  function renderPlanCompare() {
+    const wrap = document.querySelector("#planCompare");
+    const table = document.querySelector("#planCompareTable");
+    const plans = state.data.plans || [];
+    if (!wrap || !table) return;
+    const lang = i18n().currentLang();
+    const featureLists = plans.map((plan) => plan.features?.[lang] || plan.features?.en || []);
+    const features = [...new Set(featureLists.flat())];
+    wrap.hidden = plans.length < 2 || features.length === 0;
+    if (wrap.hidden) return;
+    const head = `<thead><tr><th scope="col">${escapeHtml(t("compare.feature"))}</th>${plans
+      .map((plan) => `<th scope="col">${escapeHtml(localize(plan.name))}</th>`)
+      .join("")}</tr></thead>`;
+    const priceRow = `<tr><th scope="row">${escapeHtml(t("compare.price"))}</th>${plans
+      .map((plan) => `<td>${money(Number(plan.priceDiscounted || plan.price), plan.currency)}</td>`)
+      .join("")}</tr>`;
+    const durationRow = `<tr><th scope="row">${escapeHtml(t("compare.duration"))}</th>${plans
+      .map((plan) => `<td>${escapeHtml(t("compare.days", { n: Number(plan.durationDays || 0) + Number(plan.bonusDays || 0) }))}</td>`)
+      .join("")}</tr>`;
+    const rows = features
+      .map(
+        (feature) => `<tr><th scope="row">${escapeHtml(feature)}</th>${featureLists
+          .map((list) => (list.includes(feature) ? `<td><span class="check" aria-label="${escapeHtml(t("compare.included"))}">✓</span></td>` : `<td><span class="muted" aria-label="${escapeHtml(t("compare.notIncluded"))}">—</span></td>`))
+          .join("")}</tr>`
+      )
+      .join("");
+    table.innerHTML = `${head}<tbody>${priceRow}${durationRow}${rows}</tbody>`;
+  }
+
+  // Per-branch, per-language title/description/favicon + canonical and
+  // hreflang alternates (?lang=en / ?lang=ar on this branch's own origin).
+  function renderSeo() {
+    const seo = state.data.seo || {};
+    const title = localize(seo.title);
+    const description = localize(seo.description);
+    if (title) document.title = title;
+    if (description) {
+      document.querySelector('meta[name="description"]')?.setAttribute("content", description);
+      document.querySelector('meta[property="og:description"]')?.setAttribute("content", description);
+    }
+    if (title) document.querySelector('meta[property="og:title"]')?.setAttribute("content", title);
+    if (seo.faviconUrl) document.querySelector("[data-favicon]")?.setAttribute("href", seo.faviconUrl);
+    const base = `${window.location.origin}${window.location.pathname}`;
+    document.querySelector("[data-canonical]")?.setAttribute("href", base);
+    document.querySelectorAll("link[data-hreflang]").forEach((node) => node.remove());
+    [["en", `${base}?lang=en`], ["ar", `${base}?lang=ar`], ["x-default", base]].forEach(([lang, href]) => {
+      const link = document.createElement("link");
+      link.rel = "alternate";
+      link.hreflang = lang;
+      link.href = href;
+      link.dataset.hreflang = "";
+      document.head.appendChild(link);
+    });
+  }
+
   function renderOffers() {
     const root = document.querySelector("#offerList");
     if (!root) {
       return;
     }
 
+    if (!(state.data.offers || []).length) {
+      root.innerHTML = `<p class="empty-note">${escapeHtml(t("offers.empty"))}</p>`;
+      return;
+    }
     root.innerHTML = (state.data.offers || [])
       .map(
         (offer) => `
@@ -298,7 +363,9 @@
       return;
     }
 
-    const faqs = window.GYM_DEFAULT_DATA?.faqs || state.data.faqs || [];
+    // Server FAQs (branch + shared, managed in the admin) first; the static
+    // defaults only when the API is unavailable.
+    const faqs = state.data.faqs?.length ? state.data.faqs : window.GYM_DEFAULT_DATA?.faqs || [];
 
     root.innerHTML = faqs
       .map(
@@ -311,7 +378,7 @@
               </button>
             </h3>
             <div class="faq-answer">
-              <p>${escapeHtml(localize(faq.answer))}</p>
+              <p>${escapeHtml(localize(faq.answer)).replace(/&lt;br\s*\/?&gt;/gi, "<br>").replace(/\n/g, "<br>")}</p>
             </div>
           </article>
         `
@@ -344,10 +411,24 @@
     }
       */
 
-    const whatsapp = document.querySelectorAll("[data-whatsapp-link]");
-    whatsapp.forEach((link) => {
-      link.href = `https://wa.me/${contact.whatsapp || ""}`;
+    // WhatsApp: branch number + pre-filled message in the current language
+    // (both managed per branch in the admin). Hidden when no number is set.
+    const number = String(contact.whatsapp || "").replace(/[^\d]/g, "");
+    const text = localize(contact.whatsappMessage) || "";
+    document.querySelectorAll("[data-whatsapp-link]").forEach((link) => {
+      link.hidden = !number;
+      link.href = number ? `https://wa.me/${number}${text ? `?text=${encodeURIComponent(text)}` : ""}` : "#";
     });
+
+    const social = contact.social || {};
+    const socialRoot = document.querySelector("#socialLinks");
+    if (socialRoot) {
+      const items = [["instagram", "Instagram"], ["x", "X"], ["tiktok", "TikTok"], ["snapchat", "Snapchat"]].filter(([key]) => /^https:\/\//.test(social[key] || ""));
+      socialRoot.innerHTML = items
+        .map(([key, label]) => `<li><a href="${escapeHtml(social[key])}" target="_blank" rel="noopener me">${escapeHtml(label)}</a></li>`)
+        .join("");
+      socialRoot.hidden = !items.length;
+    }
 
     const hoursRoot = document.querySelector("#workingHours");
     if (hoursRoot) {
@@ -436,10 +517,40 @@
       renderResult("#macroResult", `${protein}g / ${carbs}g / ${fat}g`, t("result.macros"), t("result.macroNote"));
     };
 
+    // US Navy body-fat estimate (metric). Women add the hip measurement.
+    const calculateBodyFat = () => {
+      const form = document.querySelector("#bodyFatForm");
+      if (!form) return;
+      const data = new FormData(form);
+      const sex = data.get("sex");
+      form.querySelector("[data-female-only]").hidden = sex !== "female";
+      const height = Number(data.get("height"));
+      const neck = Number(data.get("neck"));
+      const waist = Number(data.get("waist"));
+      const hip = Number(data.get("hip"));
+      let value;
+      if (sex === "female") {
+        if (!height || !neck || !waist || !hip || waist + hip - neck <= 0) return;
+        value = 495 / (1.29579 - 0.35004 * Math.log10(waist + hip - neck) + 0.221 * Math.log10(height)) - 450;
+      } else {
+        if (!height || !neck || !waist || waist - neck <= 0) return;
+        value = 495 / (1.0324 - 0.19077 * Math.log10(waist - neck) + 0.15456 * Math.log10(height)) - 450;
+      }
+      if (!Number.isFinite(value) || value <= 0 || value > 75) {
+        renderResult("#bodyFatResult", "—", t("result.bodyFatCheck"), t("result.bodyFatNote"));
+        return;
+      }
+      const bands = sex === "female" ? [14, 21, 25, 32] : [6, 14, 18, 25];
+      const labels = ["result.bfEssential", "result.bfAthlete", "result.bfFitness", "result.bfAverage", "result.bfHigh"];
+      const index = bands.findIndex((limit) => value < limit);
+      renderResult("#bodyFatResult", `${value.toFixed(1)}%`, t(labels[index === -1 ? 4 : index]), t("result.bodyFatNote"));
+    };
+
     [
       ["#bmiForm", calculateBmi],
       ["#calorieForm", calculateCalories],
-      ["#macroForm", calculateMacros]
+      ["#macroForm", calculateMacros],
+      ["#bodyFatForm", calculateBodyFat]
     ].forEach(([selector, calculate]) => {
       const form = document.querySelector(selector);
       form?.addEventListener("submit", (event) => {
@@ -607,21 +718,54 @@
     document.querySelectorAll(".reveal:not(.is-visible)").forEach((node) => revealObserver.observe(node));
   }
 
+  // JSON-LD (Part 2 §2.7.7): HealthClub + the branch's plans as offers +
+  // FAQPage, all from this branch's data on its own origin.
   function setStructuredData() {
+    document.querySelectorAll("script[data-jsonld]").forEach((node) => node.remove());
     const contact = state.data.contact || {};
+    const lang = i18n().currentLang();
+    const origin = window.location.origin;
+    const social = Object.values(contact.social || {}).filter((url) => /^https:\/\//.test(url));
+    const graph = [
+      {
+        "@type": "HealthClub",
+        "@id": `${origin}/#club`,
+        name: localize(state.data.brand?.localeName) || state.data.brand?.name || "Muscle and Fitness Center",
+        url: origin,
+        telephone: contact.phone || undefined,
+        email: contact.email || undefined,
+        address: localize(contact.address) || undefined,
+        image: state.data.siteImages?.homeHero?.imageUrl ? new URL(state.data.siteImages.homeHero.imageUrl, origin).href : undefined,
+        openingHours: (state.data.workingHours || []).map((item) => localize(item.hours)).filter(Boolean),
+        sameAs: social.length ? social : undefined,
+        priceRange: "SAR",
+        makesOffer: (state.data.plans || []).map((plan) => ({
+          "@type": "Offer",
+          name: localize(plan.name),
+          price: Number(plan.priceDiscounted || plan.price),
+          priceCurrency: plan.currency || "SAR",
+          itemOffered: { "@type": "Service", name: localize(plan.name), description: localize(plan.description) }
+        }))
+      }
+    ];
+    const faqs = state.data.faqs || [];
+    if (faqs.length) {
+      graph.push({
+        "@type": "FAQPage",
+        mainEntity: faqs.map((faq) => ({
+          "@type": "Question",
+          name: localize(faq.question),
+          acceptedAnswer: { "@type": "Answer", text: String(localize(faq.answer)).replace(/<br\s*\/?>/gi, " ") }
+        }))
+      });
+    }
     const script = document.createElement("script");
     script.type = "application/ld+json";
-    script.textContent = JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "HealthClub",
-      name: state.data.brand?.name || "Muscle and Fitness Center",
-      telephone: contact.phone,
-      email: contact.email,
-      address: localize(contact.address),
-      url: window.location.origin
-    });
+    script.dataset.jsonld = lang;
+    script.textContent = JSON.stringify({ "@context": "https://schema.org", "@graph": graph });
     document.head.appendChild(script);
   }
+
 
   function renderAll() {
     renderSiteImages();
@@ -630,10 +774,12 @@
     renderMetrics();
     renderPlans();
     renderCoaches();
+    renderPlanCompare();
     renderOffers();
     renderSlides();
     renderFaqs();
     renderContact();
+    renderSeo();
     i18n().applyTranslations();
   }
 
@@ -646,6 +792,8 @@
     setupRipple();
 
     state.data = await window.GymApi.bootstrap();
+    // consent.js loads analytics (only after consent) from these IDs.
+    window.dispatchEvent(new CustomEvent("gym:bootstrap", { detail: state.data }));
     renderAll();
     setupSlider();
     observeReveals();

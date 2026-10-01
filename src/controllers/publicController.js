@@ -5,6 +5,9 @@ const { env } = require("../config/env");
 
 async function bootstrap(req, res) {
   const data = await publicRepository.getBootstrap(req.branch?.id || null);
+  // Analytics IDs are public by nature; the site only loads the tags after
+  // the visitor accepts analytics cookies (PDPL consent banner).
+  data.analytics = { ga4MeasurementId: env.ga4MeasurementId || "", metaPixelId: env.metaPixelId || "" };
   res.json({ success: true, data });
 }
 

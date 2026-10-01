@@ -35,6 +35,31 @@
       "plans.eyebrow": "Memberships",
       "plans.title": "Plans that scale with commitment.",
       "plans.body": "Choose your membership and start training with confidence.",
+      "compare.title": "Compare plans",
+      "compare.feature": "Feature",
+      "compare.price": "Price",
+      "compare.duration": "Duration",
+      "compare.days": "{n} days",
+      "compare.included": "Included",
+      "compare.notIncluded": "Not included",
+      "calculator.bodyfat": "Body fat",
+      "field.neck": "Neck (cm)",
+      "field.waist": "Waist at navel (cm)",
+      "field.hip": "Hips (cm)",
+      "result.bodyFatNote": "US Navy tape-measure estimate. A body-composition scan at the club is more precise.",
+      "result.bodyFatCheck": "Check the measurements",
+      "result.bfEssential": "Essential fat",
+      "result.bfAthlete": "Athletic",
+      "result.bfFitness": "Fit",
+      "result.bfAverage": "Average",
+      "result.bfHigh": "Above average",
+      "plans.empty": "Membership plans for this branch will be published soon.",
+      "offers.empty": "New offers are coming soon — check back shortly.",
+      "consent.title": "Cookies on this site",
+      "consent.body": "We use essential cookies to run the site. With your permission we also use analytics cookies (Google Analytics, Meta Pixel) to understand visits. You can change this anytime from \"Cookie settings\".",
+      "consent.accept": "Accept analytics",
+      "consent.reject": "Essential only",
+      "consent.settings": "Cookie settings",
       "plans.featured": "Preferred",
       "plans.choose": "Choose plan",
       "offers.eyebrow": "Offers",
@@ -590,6 +615,31 @@
       "plans.eyebrow": "العضويات",
       "plans.title": "باقات تتدرج مع مستوى الالتزام.",
       "plans.body": "اختر عضويتك وابدأ التدريب بثقة.",
+      "compare.title": "مقارنة الباقات",
+      "compare.feature": "الميزة",
+      "compare.price": "السعر",
+      "compare.duration": "المدة",
+      "compare.days": "{n} يوم",
+      "compare.included": "مشمولة",
+      "compare.notIncluded": "غير مشمولة",
+      "calculator.bodyfat": "نسبة الدهون",
+      "field.neck": "محيط الرقبة (سم)",
+      "field.waist": "محيط الخصر عند السرة (سم)",
+      "field.hip": "محيط الأرداف (سم)",
+      "result.bodyFatNote": "تقدير بطريقة البحرية الأمريكية بشريط القياس. فحص تكوين الجسم في النادي أدق.",
+      "result.bodyFatCheck": "تحقق من القياسات",
+      "result.bfEssential": "دهون أساسية",
+      "result.bfAthlete": "رياضي",
+      "result.bfFitness": "لائق",
+      "result.bfAverage": "متوسط",
+      "result.bfHigh": "أعلى من المتوسط",
+      "plans.empty": "ستُنشر باقات هذا الفرع قريبًا.",
+      "offers.empty": "عروض جديدة قريبًا — تابعنا.",
+      "consent.title": "ملفات تعريف الارتباط",
+      "consent.body": "نستخدم ملفات تعريف ارتباط أساسية لتشغيل الموقع، وبموافقتك نستخدم أيضًا ملفات تحليلية (Google Analytics وMeta Pixel) لفهم الزيارات. يمكنك تغيير اختيارك في أي وقت من \"إعدادات ملفات الارتباط\".",
+      "consent.accept": "قبول الملفات التحليلية",
+      "consent.reject": "الأساسية فقط",
+      "consent.settings": "إعدادات ملفات الارتباط",
       "plans.featured": "مفضلة",
       "plans.choose": "اختيار الباقة",
       "offers.eyebrow": "العروض",
@@ -1117,7 +1167,22 @@
       return "ar";
     }
 
-    const stored = localStorage.getItem("aurum.lang");
+    // ?lang=ar / ?lang=en (hreflang URLs, shared links) wins and is remembered.
+    const fromUrl = new URLSearchParams(window.location.search).get("lang");
+    if (fromUrl === "ar" || fromUrl === "en") {
+      try {
+        localStorage.setItem("aurum.lang", fromUrl);
+      } catch (_error) {
+        /* storage unavailable */
+      }
+      return fromUrl;
+    }
+    let stored = null;
+    try {
+      stored = localStorage.getItem("aurum.lang");
+    } catch (_error) {
+      stored = null;
+    }
     if (stored === "ar" || stored === "en") {
       return stored;
     }

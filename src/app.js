@@ -36,6 +36,7 @@ const dataTransferRoutes = require("./routes/dataTransferRoutes");
 const staffRoutes = require("./routes/staffRoutes");
 const opsRoutes = require("./routes/opsRoutes");
 const cmsRoutes = require("./routes/cmsRoutes");
+const seoController = require("./controllers/seoController");
 
 const app = express();
 const publicDir = path.join(__dirname, "..", "public");
@@ -111,7 +112,20 @@ const corsOptions =
       }
     : { origin: allowedOrigins[0] || env.corsOrigin, credentials: true };
 
-app.use(helmet());
+// Default helmet CSP plus the two analytics vendors (loaded only after the
+// visitor consents, and only when GA4_MEASUREMENT_ID / META_PIXEL_ID are set).
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        "script-src": ["'self'", "https://www.googletagmanager.com", "https://connect.facebook.net"],
+        "img-src": ["'self'", "data:", "https://www.google-analytics.com", "https://www.googletagmanager.com", "https://www.facebook.com"],
+        "connect-src": ["'self'", "https://www.google-analytics.com", "https://*.google-analytics.com", "https://*.analytics.google.com", "https://www.facebook.com"]
+      }
+    }
+  })
+);
 app.use(cors(corsOptions));
 app.use("/api/v1/payments/webhook", express.raw({ type: "application/json", limit: "100kb" }));
 app.use("/api/v1/admin/uploads/images", express.json({ limit: "6mb" }));
@@ -138,6 +152,8 @@ app.use(
 // register). Authenticated routes ignore req.branch entirely -- they use
 // req.user.branchId instead, set by authenticate() from the DB principal.
 app.use(resolveBranch);
+app.get("/robots.txt", seoController.robots);
+app.get("/sitemap.xml", seoController.sitemap);
 
 app.use("/api/v1/public", publicRoutes);
 app.use("/api/v1/auth", authRoutes);
@@ -175,6 +191,11 @@ app.get("/", (_req, res) => {
 });
 
 app.use("/api", notFound);
+// Website pages that do not exist get the branded, bilingual 404 page.
+app.use((req, res, next) => {
+  if (req.method !== "GET" && req.method !== "HEAD") return next();
+  return res.status(404).sendFile(path.join(publicDir, "404.html"));
+});
 app.use(errorHandler);
 
 module.exports = app;
