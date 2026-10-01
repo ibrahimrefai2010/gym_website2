@@ -2875,3 +2875,70 @@ html[dir="rtl"] .hero::after {
   background: rgba(200, 168, 103, var(--heat, 0));
   outline: 1px solid rgba(255, 255, 255, 0.06);
 }
+
+/* ---- Member portal: online payment ---- */
+.checkout-picker {
+  display: grid;
+  gap: 10px;
+  margin-block-start: 16px;
+  padding-block-start: 16px;
+  border-block-start: 1px solid var(--color-line);
+}
+
+.checkout-picker select {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-white);
+  color: var(--color-black);
+  font: inherit;
+}
+
+.checkout-methods {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-muted);
+}
+
+.payment-banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-block: 0 16px;
+  padding: 14px 18px;
+  border-radius: var(--radius-sm);
+  border-inline-start: 5px solid var(--color-muted);
+  background: var(--color-soft);
+}
+
+.payment-banner p {
+  margin: 0;
+  font-weight: 600;
+}
+
+.payment-banner.is-success {
+  border-inline-start-color: #1f8a4c;
+  background: #e7f5ec;
+  color: #115e38;
+}
+
+.payment-banner.is-pending {
+  border-inline-start-color: var(--color-gold);
+  background: #faf3e3;
+  color: #6b5320;
+}
+
+.payment-banner.is-error {
+  border-inline-start-color: var(--color-red-strong);
+  background: #fbeaea;
+  color: #8f1119;
+}
+
+.payment-banner .btn.secondary {
+  background: transparent;
+  color: inherit;
+  border: 1px solid currentColor;
+}

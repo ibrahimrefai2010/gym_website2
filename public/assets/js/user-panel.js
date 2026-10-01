@@ -208,10 +208,7 @@
     }
     const membership = info.membership;
     if (!membership || info.membershipState === "none") {
-      node.innerHTML = `${emptyBlock(t("portal.membership.none"))}
-        <div class="inline-actions" style="justify-content:center">
-          <a class="btn" href="/#plans" data-i18n="portal.renew">${escapeHtml(t("portal.renew"))}</a>
-        </div>`;
+      node.innerHTML = `${emptyBlock(t("portal.membership.none"))}${checkoutPicker(null, "portal.buy")}`;
       return;
     }
 
@@ -238,8 +235,37 @@
         <div><dt>${escapeHtml(t("portal.field.price"))}</dt><dd>${escapeHtml(money(membership.plan?.price, "SAR"))}</dd></div>
         <div><dt>${escapeHtml(t("portal.field.memberSince"))}</dt><dd>${escapeHtml(formatMonthYear(info.memberSince))}</dd></div>
       </dl>
-      <button class="btn" type="button" data-action="renew">${escapeHtml(t("portal.renew"))}</button>
-      <p class="form-message" data-renew-message aria-live="polite"></p>
+      ${checkoutPicker(membership.plan?.id, "portal.renew")}
+    `;
+  }
+
+  // Plan picker + "Pay online" (Moyasar hosted checkout). Plans come from the
+  // branch-scoped public bootstrap, so a member only ever sees their own
+  // branch's plans; the server re-checks the plan's branch anyway.
+  function checkoutPicker(currentPlanId, titleKey) {
+    const plans = (state.publicData?.plans || []).filter((plan) => plan.isActive !== false);
+    if (!plans.length) {
+      return "";
+    }
+    const selected =
+      plans.find((plan) => String(plan.id) === String(currentPlanId)) || plans.find((plan) => plan.highlighted) || plans[0];
+    const options = plans
+      .map(
+        (plan) =>
+          `<option value="${escapeHtml(plan.id)}" ${plan === selected ? "selected" : ""}>${escapeHtml(
+            `${localize(plan.name)} — ${money(plan.price ?? plan.priceDiscounted, plan.currency || "SAR")}`
+          )}</option>`
+      )
+      .join("");
+    return `
+      <div class="checkout-picker">
+        <p class="portal-section-title">${escapeHtml(t(titleKey))}</p>
+        <label class="sr-only" for="renewPlan">${escapeHtml(t("portal.checkout.choosePlan"))}</label>
+        <select id="renewPlan" data-renew-plan>${options}</select>
+        <button class="btn" type="button" data-action="renew">${escapeHtml(t("portal.checkout.button"))}</button>
+        <p class="checkout-methods">${escapeHtml(t("portal.checkout.methods"))}</p>
+        <p class="form-message" data-renew-message aria-live="polite"></p>
+      </div>
     `;
   }
 
@@ -1096,37 +1122,95 @@
   }
 
   async function renewMembership(button) {
-    const messageNode = document.querySelector("[data-renew-message]");
-    const plans = state.publicData?.plans || [];
-    const currentPlanId = state.dashboard?.membership?.plan?.id;
-    const plan =
-      plans.find((item) => String(item.id) === String(currentPlanId)) ||
-      plans.find((item) => item.highlighted) ||
-      plans[0];
-    if (!plan) {
-      window.location.href = "/#plans";
+    const box = button?.closest(".checkout-picker") || document;
+    const messageNode = box.querySelector("[data-renew-message]");
+    const planId = box.querySelector("[data-renew-plan]")?.value;
+    if (!planId) {
       return;
     }
     if (button) {
       button.disabled = true;
     }
+    setMessage(messageNode, t("portal.checkout.redirecting"));
     try {
       const result = await api.request("/api/v1/payments/checkout", {
         method: "POST",
-        body: JSON.stringify({ planId: plan.id })
+        body: JSON.stringify({ planId })
       });
       if (result.checkoutUrl) {
         window.location.href = result.checkoutUrl;
         return;
       }
-      setMessage(messageNode, t("user.stripePrepared"), "success");
+      setMessage(messageNode, t("portal.checkout.unavailable"), "error");
     } catch (error) {
-      setMessage(messageNode, error.message, "error");
-    } finally {
-      if (button) {
-        button.disabled = false;
-      }
+      setMessage(messageNode, /not configured/i.test(error.message) ? t("portal.checkout.unavailable") : error.message, "error");
     }
+    if (button) {
+      button.disabled = false;
+    }
+  }
+
+  // Back from Moyasar: /user.html?payment=<id>. The server re-verifies with
+  // Moyasar (never trusting the query string) and returns the outcome.
+  async function handlePaymentReturn(paymentIdOverride) {
+    const paymentId = paymentIdOverride || new URLSearchParams(window.location.search).get("payment");
+    if (!paymentId || !/^\d+$/.test(paymentId)) {
+      return;
+    }
+    // Drop the query (and any provider params) so a refresh does not
+    // re-show the banner.
+    if (!paymentIdOverride) {
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.hash}`);
+    }
+    let status;
+    try {
+      status = await api.request(`/api/v1/payments/${paymentId}/status`);
+    } catch (_error) {
+      showPaymentBanner("error", t("portal.checkout.checkError"));
+      return;
+    }
+    if (status.status === "completed") {
+      showPaymentBanner(
+        "success",
+        status.invoiceNumber ? t("portal.checkout.successInvoice", { number: status.invoiceNumber }) : t("portal.checkout.success")
+      );
+    } else if (status.status === "pending") {
+      const resume = status.checkoutUrl
+        ? `<a class="btn small" href="${escapeHtml(status.checkoutUrl)}" rel="noopener">${escapeHtml(t("portal.checkout.resume"))}</a>`
+        : "";
+      showPaymentBanner("pending", t("portal.checkout.pending"), resume);
+      // Webhook may land a moment later -- check again shortly.
+      window.setTimeout(() => {
+        handlePaymentReturn(paymentId).then(() => loadInitial());
+      }, 8000);
+    } else if (status.status === "failed") {
+      const reason = status.failureReason ? ` ${t("portal.checkout.failedReason", { reason: status.failureReason })}` : "";
+      showPaymentBanner("error", `${t("portal.checkout.failed")}${reason}`, retryButton());
+    } else {
+      showPaymentBanner("error", t("portal.checkout.cancelled"), retryButton());
+    }
+  }
+
+  function retryButton() {
+    return `<button class="btn small" type="button" data-goto-tab="membership">${escapeHtml(t("portal.checkout.retry"))}</button>`;
+  }
+
+  function showPaymentBanner(tone, text, actionsHtml = "") {
+    const banner = byId("paymentBanner");
+    if (!banner) {
+      return;
+    }
+    banner.className = `payment-banner is-${tone}`;
+    banner.innerHTML = `
+      <p>${escapeHtml(text)}</p>
+      <div class="inline-actions">
+        ${actionsHtml}
+        <button class="btn small secondary" type="button" data-dismiss-banner>${escapeHtml(t("portal.checkout.dismiss"))}</button>
+      </div>`;
+    banner.hidden = false;
+    banner.querySelector("[data-dismiss-banner]")?.addEventListener("click", () => {
+      banner.hidden = true;
+    });
   }
 
   /* ------------------------------------------------------------------ *
@@ -1276,6 +1360,8 @@
     setupPrefsForm();
 
     await ensureSessionOrRedirect();
+    // Settle a returning checkout first so the dashboard below reflects it.
+    await handlePaymentReturn();
     await loadInitial();
 
     const hash = String(window.location.hash || "").replace("#", "");
