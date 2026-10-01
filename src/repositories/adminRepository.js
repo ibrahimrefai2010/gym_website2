@@ -10,6 +10,7 @@ const settingsRepository = require("./settingsRepository");
 const sliderRepository = require("./sliderRepository");
 const rbacRepository = require("./rbacRepository");
 const taskRepository = require("./taskRepository");
+const reportRepository = require("./reportRepository");
 
 function ensureDatabase() {
   if (!hasDatabaseConfig()) {
@@ -144,8 +145,10 @@ async function getOverview(branchId = 1) {
           (SELECT COUNT(*) FROM memberships WHERE status = 'active' AND branch_id = ? AND end_date BETWEEN UTC_DATE() AND UTC_DATE() + INTERVAL 7 DAY) AS expiring_7,
           (SELECT COUNT(*) FROM memberships WHERE status = 'active' AND branch_id = ? AND end_date BETWEEN UTC_DATE() AND UTC_DATE() + INTERVAL 3 DAY) AS expiring_3,
           (SELECT COUNT(*) FROM memberships WHERE status = 'active' AND branch_id = ? AND end_date BETWEEN UTC_DATE() AND UTC_DATE() + INTERVAL 1 DAY) AS expiring_1,
+          (SELECT COUNT(*) FROM messages WHERE branch_id = ? AND created_at >= UTC_TIMESTAMP() - INTERVAL 7 DAY) AS new_leads_7d,
+          (SELECT COUNT(*) FROM attendance_logs WHERE branch_id = ? AND deleted_at IS NULL AND DATE(CONVERT_TZ(check_in_at, '+00:00', '+03:00')) = DATE(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+03:00'))) AS checkins_today,
           (SELECT COUNT(*) FROM notifications n JOIN users nu ON nu.id = n.user_id WHERE n.is_read = 0 AND nu.branch_id = ?) AS open_notifications`,
-        [branchId, branchId, branchId, branchId, branchId, branchId, branchId, branchId, branchId, branchId, branchId]
+        [branchId, branchId, branchId, branchId, branchId, branchId, branchId, branchId, branchId, branchId, branchId, branchId, branchId]
       ),
       query(
         `SELECT u.id, u.full_name, u.email, u.phone, u.status, p.name_en AS plan
@@ -206,6 +209,12 @@ async function getOverview(branchId = 1) {
   const stats = statsRows[0] || {};
   const inactivityDays = Number(await settingsRepository.getSetting("member_inactivity_days", 14, branchId)) || 14;
   const atRisk = await customerRepository.listAtRiskMembers(branchId, inactivityDays, 5000);
+  const today = new Date().toISOString().slice(0, 10);
+  const renewal = await reportRepository.churnReport({
+    branchIds: [Number(branchId)],
+    from: new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10),
+    to: today
+  });
 
   return {
     stats: [
@@ -227,6 +236,14 @@ async function getOverview(branchId = 1) {
         delta: `3d: ${stats.expiring_3 || 0} · 1d: ${stats.expiring_1 || 0}`
       },
       { key: "atRisk", label: { en: "At-risk members", ar: "أعضاء منقطعون" }, value: String(atRisk.length), delta: `${inactivityDays}d` },
+      { key: "leads", label: { en: "New leads (7 days)", ar: "عملاء محتملون جدد (7 أيام)" }, value: String(stats.new_leads_7d || 0), delta: "" },
+      { key: "checkins", label: { en: "Check-ins today", ar: "زيارات اليوم" }, value: String(stats.checkins_today || 0), delta: "" },
+      {
+        key: "renewal",
+        label: { en: "Renewal rate (30 days)", ar: "نسبة التجديد (30 يومًا)" },
+        value: renewal.consolidated.renewalRate == null ? "—" : `${renewal.consolidated.renewalRate}%`,
+        delta: `${renewal.consolidated.renewed}/${renewal.consolidated.renewed + renewal.consolidated.churned}`
+      },
       { label: { en: "Open notifications", ar: "تنبيهات مفتوحة" }, value: String(stats.open_notifications || 0), delta: "" }
     ],
     users: users.map((user) => ({

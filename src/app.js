@@ -33,6 +33,8 @@ const aiRoutes = require("./routes/aiRoutes");
 const taskRoutes = require("./routes/taskRoutes");
 const coachRoutes = require("./routes/coachRoutes");
 const dataTransferRoutes = require("./routes/dataTransferRoutes");
+const staffRoutes = require("./routes/staffRoutes");
+const opsRoutes = require("./routes/opsRoutes");
 
 const app = express();
 const publicDir = path.join(__dirname, "..", "public");
@@ -59,7 +61,7 @@ const loginLimiter = rateLimit({
 
 const adminLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 5,
+  limit: env.rateLimitAdminLogin,
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: rateMessage("Too many admin login attempts. Try again shortly.")
@@ -157,6 +159,8 @@ app.use("/api/v1/ai", aiRoutes);
 app.use("/api/v1/tasks", taskRoutes);
 app.use("/api/v1/coaches", coachRoutes);
 app.use("/api/v1/data", dataTransferRoutes);
+app.use("/api/v1/staff", staffRoutes);
+app.use("/api/v1/ops", opsRoutes);
 app.use("/api/v1", mediaRoutes);
 app.use("/api/v1/user", authenticate, memberRoutes);
 app.use("/api/v1/user", authenticate, userRoutes);

@@ -55,6 +55,7 @@ const env = {
   rateLimitLogin: intEnv("RATE_LIMIT_LOGIN", 10),
   rateLimitRegister: intEnv("RATE_LIMIT_REGISTER", 5),
   rateLimitOtp: intEnv("RATE_LIMIT_OTP", 3),
+  rateLimitAdminLogin: intEnv("RATE_LIMIT_ADMIN_LOGIN", 5),
   adminRegistrationSecret: process.env.ADMIN_REGISTRATION_SECRET || "",
 
   currency: "SAR",

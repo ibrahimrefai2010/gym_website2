@@ -1,3 +1,4 @@
+const { query } = require("../config/database");
 const adminRepository = require("../repositories/adminRepository");
 const backupService = require("../services/backupService");
 const imageUploadService = require("../services/imageUploadService");
@@ -125,6 +126,11 @@ async function save(req, res) {
     data = await adminRepository.setRolePermissions(req.body, req.user?.id);
     await createLog("admin", req.user?.id, "role.permissions.update", "roles", null, data, req.ip);
   } else if (resource === "adminRoleAssignments") {
+    // The target admin must be in a branch this admin can act on (same 404
+    // as a missing one) -- previously any permissions:manage admin could
+    // re-role the other branch's staff by id.
+    const targetRows = await query("SELECT id, branch_id FROM admin_users WHERE id = ? AND deleted_at IS NULL LIMIT 1", [req.body?.adminId]);
+    await assertBranchOwnership(targetRows[0] || null, req, createHttpError(404, "Admin user not found.", "ADMIN_NOT_FOUND"));
     data = await adminRepository.setAdminRoles(req.body, req.user?.id);
     await createLog("admin", req.user?.id, "admin.roles.update", "admin_users", data.adminId, { roleKeys: data.roleKeys }, req.ip);
   } else if (resource === "notifications") {
