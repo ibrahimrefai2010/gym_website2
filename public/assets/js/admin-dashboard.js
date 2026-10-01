@@ -2256,6 +2256,297 @@
     if (backup) backup.hidden = state.me?.role !== "super_admin";
   }
 
+  // ---- Forced password change (first sign-in / after a reset) ----
+  function requirePasswordChange() {
+    const dialog = document.querySelector("#passwordDialog");
+    if (!dialog) return Promise.resolve();
+    window.GymI18n.applyTranslations(dialog);
+    dialog.addEventListener("cancel", (event) => event.preventDefault());
+    dialog.showModal();
+    document.querySelector("#passwordChangeForm").onsubmit = async (event) => {
+      event.preventDefault();
+      const current = document.querySelector("#pwCurrent").value;
+      const next = document.querySelector("#pwNew").value;
+      if (next !== document.querySelector("#pwConfirm").value) {
+        setMessage("#pwMessage", t("admin.pw.mismatch"), false);
+        return;
+      }
+      const submit = event.currentTarget.querySelector("button");
+      submit.disabled = true;
+      try {
+        await window.GymApi.request("/api/v1/admin/auth/change-password", { method: "POST", body: JSON.stringify({ currentPassword: current, newPassword: next }) });
+        // The change revokes every session -- sign straight back in.
+        await window.GymApi.login(state.me.email, next, true);
+        dialog.close();
+        await load();
+      } catch (error) {
+        setMessage("#pwMessage", error.message, false);
+        submit.disabled = false;
+      }
+    };
+    return Promise.resolve();
+  }
+
+  // ---- Bell (Part 2 §2.0.9) ----
+  async function loadBell() {
+    try {
+      state.bell = await window.GymApi.request("/api/v1/ops/feed");
+    } catch (_error) {
+      state.bell = null;
+    }
+    renderBell();
+  }
+
+  function renderBell() {
+    const count = document.querySelector("#bellCount");
+    const data = state.bell;
+    if (!count) return;
+    count.hidden = !data?.unread;
+    count.textContent = data?.unread > 99 ? "99+" : String(data?.unread || 0);
+    const lang = window.GymI18n.currentLang();
+    setHtml(
+      "#bellList",
+      data?.items?.length
+        ? data.items
+            .map(
+              (item) => `<li class="${item.unread ? "is-unread" : ""}"><button type="button" data-bell-tab="${escapeHtml(item.tab || "overview")}">
+                <span>${escapeHtml(item[lang] || item.en)}</span><small class="muted">${escapeHtml(formatDate(item.at))} ${escapeHtml(formatTime(item.at))}</small></button></li>`
+            )
+            .join("")
+        : `<li class="muted">${escapeHtml(t("admin.bell.none"))}</li>`
+    );
+  }
+
+  function setupBell() {
+    const button = document.querySelector("#bellButton");
+    const panel = document.querySelector("#bellPanel");
+    button?.addEventListener("click", async () => {
+      const open = panel.hidden;
+      panel.hidden = !open;
+      button.setAttribute("aria-expanded", String(open));
+      if (open && state.bell?.unread) {
+        await window.GymApi.request("/api/v1/ops/feed/seen", { method: "POST", body: "{}" }).catch(() => {});
+        state.bell.unread = 0;
+        document.querySelector("#bellCount").hidden = true;
+      }
+    });
+    panel?.addEventListener("click", (event) => {
+      const target = event.target.closest("[data-bell-tab]");
+      if (!target) return;
+      panel.hidden = true;
+      document.querySelector(`[data-admin-tab="${target.dataset.bellTab}"]`)?.click();
+    });
+    document.addEventListener("click", (event) => {
+      if (panel && !panel.hidden && !event.target.closest(".bell-wrap")) panel.hidden = true;
+    });
+    window.setInterval(() => {
+      if (!document.hidden) loadBell();
+    }, 120000);
+  }
+
+  // ---- Staff accounts ----
+  const FALLBACK_ROLE_KEYS = ["admin", "manager", "reception", "accountant", "trainer", "coach", "marketing", "customer_support"];
+
+  async function loadStaff() {
+    try {
+      state.staff = await window.GymApi.request("/api/v1/staff");
+    } catch (_error) {
+      state.staff = null;
+    }
+    renderStaff();
+  }
+
+  function roleOptions() {
+    const roles = state.rbac?.roles?.length ? state.rbac.roles : FALLBACK_ROLE_KEYS.map((key) => ({ key, displayName: key }));
+    return roles.filter((role) => role.key !== "super_admin" || state.me?.role === "super_admin");
+  }
+
+  function renderStaffRoleChecks(selected = []) {
+    setHtml(
+      "#staffRoleChecks",
+      roleOptions()
+        .map((role) => `<label class="permission-check"><input type="checkbox" name="roleKeys" value="${escapeHtml(role.key)}" ${selected.includes(role.key) ? "checked" : ""}> <span>${escapeHtml(role.displayName || role.key)}</span></label>`)
+        .join("")
+    );
+  }
+
+  function renderStaff() {
+    const rows = state.staff;
+    if (!rows) {
+      setHtml("#adminAccountRows", `<tr><td colspan="5">${escapeHtml(t("admin.staff.noAccess"))}</td></tr>`);
+      return;
+    }
+    setHtml(
+      "#adminAccountRows",
+      rows
+        .map(
+          (row) => `<tr>
+            <td>${escapeHtml(row.fullName)}<br><small class="muted">${escapeHtml(row.email)}</small></td>
+            <td>${escapeHtml((row.roleKeys.length ? row.roleKeys : [row.legacyRole]).join(", "))}</td>
+            <td>${escapeHtml(t(`admin.staff.${row.status}`))}${row.mustChangePassword ? `<br><small class="muted">${escapeHtml(t("admin.staff.mustChange"))}</small>` : ""}</td>
+            <td>${row.lastLoginAt ? `${escapeHtml(formatDate(row.lastLoginAt))} ${escapeHtml(formatTime(row.lastLoginAt))}<br><small class="muted">${escapeHtml(row.lastLoginIp || "")}</small>` : escapeHtml(t("admin.staff.neverSignedIn"))}</td>
+            <td><div class="row-actions">
+              <button class="btn small secondary" type="button" data-staff-action="edit" data-staff-id="${escapeHtml(row.id)}">${escapeHtml(t("admin.tasks.edit"))}</button>
+              <button class="btn small secondary" type="button" data-staff-action="reset" data-staff-id="${escapeHtml(row.id)}">${escapeHtml(t("admin.staff.reset"))}</button>
+            </div></td>
+          </tr>`
+        )
+        .join("")
+    );
+  }
+
+  function showTempPassword(email, password) {
+    const box = document.querySelector("#staffTempPassword");
+    box.hidden = false;
+    box.innerHTML = `<p>${escapeHtml(t("admin.staff.tempIntro").replace("{email}", email))}</p><code>${escapeHtml(password)}</code>
+      <button class="btn small secondary" type="button" id="staffTempCopy">${escapeHtml(t("admin.ai.copy"))}</button>`;
+    document.querySelector("#staffTempCopy")?.addEventListener("click", () => navigator.clipboard.writeText(password).catch(() => {}));
+  }
+
+  function setupStaff() {
+    const form = document.querySelector("#staffForm");
+    const resetForm = () => {
+      form.reset();
+      form.elements.id.value = "";
+      form.elements.email.disabled = false;
+      document.querySelector("#staffFormTitle").textContent = t("admin.staff.new");
+      renderStaffRoleChecks([]);
+    };
+    document.querySelector("#staffFormReset")?.addEventListener("click", resetForm);
+    document.querySelector('[data-admin-tab="adminAccounts"]')?.addEventListener("click", () => {
+      loadStaff();
+      renderStaffRoleChecks([]);
+    });
+    document.querySelector("#adminAccountRows")?.addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-staff-action]");
+      if (!button) return;
+      const row = (state.staff || []).find((item) => String(item.id) === button.dataset.staffId);
+      if (!row) return;
+      if (button.dataset.staffAction === "edit") {
+        form.elements.id.value = row.id;
+        form.elements.fullName.value = row.fullName;
+        form.elements.email.value = row.email;
+        form.elements.email.disabled = true;
+        form.elements.phone.value = row.phone || "";
+        form.elements.status.value = row.status === "active" ? "active" : "inactive";
+        renderStaffRoleChecks(row.roleKeys);
+        document.querySelector("#staffFormTitle").textContent = t("admin.staff.edit");
+        form.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      if (!window.confirm(t("admin.staff.confirmReset").replace("{name}", row.fullName).replace("{branch}", branchSuffix()))) return;
+      button.disabled = true;
+      try {
+        const result = await window.GymApi.request(`/api/v1/staff/${row.id}/reset-password`, { method: "POST", body: "{}" });
+        showTempPassword(row.email, result.temporaryPassword);
+        loadStaff();
+      } catch (error) {
+        setMessage("#staffMessage", error.message, false);
+      } finally {
+        button.disabled = false;
+      }
+    });
+    form?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const id = form.elements.id.value;
+      const roleKeys = [...form.querySelectorAll('input[name="roleKeys"]:checked')].map((input) => input.value);
+      const body = { fullName: form.elements.fullName.value.trim(), phone: form.elements.phone.value.trim() || null, roleKeys };
+      if (!id) body.email = form.elements.email.value.trim();
+      else body.status = form.elements.status.value;
+      if (!roleKeys.length) {
+        setMessage("#staffMessage", t("admin.staff.pickRole"), false);
+        return;
+      }
+      const submit = form.querySelector('button[type="submit"]');
+      submit.disabled = true;
+      try {
+        const result = await window.GymApi.request(id ? `/api/v1/staff/${id}` : "/api/v1/staff", { method: id ? "PATCH" : "POST", body: JSON.stringify(body) });
+        if (result.temporaryPassword) showTempPassword(result.email, result.temporaryPassword);
+        setMessage("#staffMessage", t("admin.staff.saved"), true);
+        resetForm();
+        loadStaff();
+      } catch (error) {
+        setMessage("#staffMessage", error.message, false);
+      } finally {
+        submit.disabled = false;
+      }
+    });
+  }
+
+  // ---- Audit log ----
+  async function loadAudit(page = 1) {
+    const params = new URLSearchParams({ ...(state.auditFilters || {}), page: String(page), pageSize: "25" });
+    if (state.auditAll) params.set("scope", "all");
+    try {
+      state.audit = await window.GymApi.request(`/api/v1/ops/audit-logs?${params.toString()}`);
+    } catch (_error) {
+      state.audit = null;
+    }
+    renderAudit();
+  }
+
+  function renderAudit() {
+    const data = state.audit;
+    if (!data) {
+      setHtml("#logRows", `<tr><td colspan="7">${escapeHtml(t("admin.audit.noAccess"))}</td></tr>`);
+      return;
+    }
+    setHtml(
+      "#logRows",
+      data.items.length
+        ? data.items
+            .map((row) => {
+              const meta = row.meta ? (typeof row.meta === "string" ? row.meta : JSON.stringify(row.meta)) : "";
+              return `<tr>
+                <td>${escapeHtml(formatDate(row.created_at))}<br><small class="muted">${escapeHtml(formatTime(row.created_at))}</small></td>
+                <td>${escapeHtml(row.actor_name || `${row.actor_type} #${row.actor_id}`)}<br><small class="muted">${escapeHtml(t(`admin.audit.type.${row.actor_type}`))}</small></td>
+                <td><code>${escapeHtml(row.action)}</code></td>
+                <td>${escapeHtml(row.target_table || "—")}${row.target_id ? ` #${escapeHtml(row.target_id)}` : ""}</td>
+                <td>${escapeHtml(row.branch || "—")}</td>
+                <td>${escapeHtml(row.ip_address || "")}</td>
+                <td>${meta ? `<details><summary>${escapeHtml(t("admin.audit.view"))}</summary><pre class="audit-meta">${escapeHtml(meta)}</pre></details>` : ""}</td>
+              </tr>`;
+            })
+            .join("")
+        : `<tr><td colspan="7">${escapeHtml(t("admin.audit.none"))}</td></tr>`
+    );
+    setHtml("#auditPager", pagerHtml(data, "data-audit-page"));
+  }
+
+  function setupAudit() {
+    document.querySelector("#auditFilterForm")?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      state.auditFilters = formFilters(event.currentTarget);
+      loadAudit(1);
+    });
+    document.querySelector("#auditPager")?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-audit-page]");
+      if (button && !button.disabled) loadAudit(Number(button.dataset.auditPage));
+    });
+    document.querySelector("#auditScopeAll")?.addEventListener("change", (event) => {
+      state.auditAll = event.target.checked;
+      loadAudit(1);
+    });
+    document.querySelector("#auditExport")?.addEventListener("click", async (event) => {
+      const button = event.currentTarget;
+      const params = new URLSearchParams({ ...(state.auditFilters || {}), lang: window.GymI18n.currentLang() });
+      if (state.auditAll) params.set("scope", "all");
+      button.disabled = true;
+      try {
+        await window.GymApi.download(`/api/v1/ops/audit-logs/export?${params.toString()}`, `audit-log-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      } catch (error) {
+        window.alert(error.message);
+      } finally {
+        button.disabled = false;
+      }
+    });
+    document.querySelector('[data-admin-tab="logs"]')?.addEventListener("click", () => {
+      const wrap = document.querySelector("#auditScopeWrap");
+      if (wrap) wrap.hidden = !canSwitchBranchesClientSide();
+      loadAudit(1);
+    });
+  }
+
   // Leads/CRM (Part 2): same on-demand, filtered + paginated pattern as
   // loadTasks above (replaces the old one-shot /api/v1/messages fetch inside
   // load()'s Promise.all, which returned a flat, unfiltered array of up to
@@ -2598,22 +2889,9 @@
   }
 
   function renderAdminAccounts() {
-    setHtml(
-      "#adminAccountRows",
-      (state.overview?.adminAccounts || [])
-        .map(
-          (account) => `
-            <tr>
-              <td>${escapeHtml(account.id)}</td>
-              <td>${escapeHtml(account.username)}</td>
-              <td>${escapeHtml(account.email)}</td>
-              <td>${escapeHtml(statusLabel(account.role))}</td>
-            </tr>
-          `
-        )
-        .join("")
-    );
+    renderStaff();
   }
+
 
   function selectedRole() {
     const roles = state.rbac?.roles || [];
@@ -2724,22 +3002,9 @@
   }
 
   function renderLogs() {
-    setHtml(
-      "#logRows",
-      (state.overview?.logs || [])
-        .map(
-          (log) => `
-            <tr>
-              <td>${escapeHtml(log.id)}</td>
-              <td>${escapeHtml(statusLabel(log.level || "info"))}</td>
-              <td>${escapeHtml(log.message || log.description || log.action || "")}</td>
-              <td>${formatDate(log.createdAt || log.created_at)}</td>
-            </tr>
-          `
-        )
-        .join("")
-    );
+    renderAudit();
   }
+
 
   function renderSettings() {
     const contact = state.publicData.contact || {};
@@ -2844,10 +3109,14 @@
         return;
       }
       state.me = user;
+      if (user.mustChangePassword) {
+        await requirePasswordChange();
+        return;
+      }
       const [overview, publicData, plans, offers, siteImagesData, slides, rbac, reportSummary, broadcasts] = await Promise.all([
         window.GymApi.request("/api/v1/admin/overview"),
         window.GymApi.bootstrap(),
-        window.GymApi.request("/api/v1/admin/plans"),
+        window.GymApi.request("/api/v1/admin/plans").catch(() => null),
         // Permission-gated: a 403 here (e.g. a Reception-only admin) must not
         // be treated as a dead session -- fall back to public data instead.
         window.GymApi.request("/api/v1/admin/offers").catch(() => null),
@@ -2860,7 +3129,7 @@
       state.announcements = broadcasts || [];
       state.overview = overview;
       state.publicData = publicData;
-      state.plans = plans;
+      state.plans = plans || [];
       state.offers = offers || publicData.offers || [];
       state.siteImages = siteImagesData || publicData.siteImages || null;
       state.slides = slides || publicData.slides || [];
@@ -2875,6 +3144,7 @@
       loadTasks(1);
       loadCheckin();
       loadAiStatus();
+      loadBell();
       const backupButton = document.querySelector("#fullBackupButton");
       if (backupButton) backupButton.hidden = state.me?.role !== "super_admin";
       loadPayments(1);
@@ -3869,6 +4139,9 @@
     setupMemberActions();
     setupAiAssistant();
     setupImports();
+    setupBell();
+    setupStaff();
+    setupAudit();
     setupSession();
     setupBranchSwitcher();
     load();

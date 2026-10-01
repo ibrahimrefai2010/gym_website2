@@ -68,6 +68,16 @@
               <span data-i18n="admin.branch.viewing">الفرع المعروض</span>
               <select id="branchSwitcher" data-i18n-label="admin.branch.viewing"></select>
             </label>
+            <div class="bell-wrap">
+              <button class="btn small secondary bell-button" type="button" id="bellButton" aria-haspopup="true" aria-expanded="false" data-i18n-label="admin.bell.title" aria-label="التنبيهات">
+                <span aria-hidden="true">🔔</span>
+                <span class="bell-count" id="bellCount" hidden>0</span>
+              </button>
+              <div class="bell-panel" id="bellPanel" hidden>
+                <p class="portal-section-title" data-i18n="admin.bell.title">التنبيهات</p>
+                <ul class="bell-list" id="bellList"></ul>
+              </div>
+            </div>
             <a class="btn small" href="/user.html" data-i18n="nav.account">الحساب</a>
           </div>
         </div>
@@ -991,10 +1001,47 @@
             </div>
             <div class="table-shell">
               <table class="table">
-                <thead><tr><th>الرقم</th><th>الاسم</th><th>البريد</th><th>الدور</th></tr></thead>
+                <thead><tr>
+                  <th data-i18n="admin.staff.name">الاسم</th>
+                  <th data-i18n="admin.staff.roles">الأدوار</th>
+                  <th data-i18n="table.status">الحالة</th>
+                  <th data-i18n="admin.staff.lastLogin">آخر دخول</th>
+                  <th data-i18n="admin.tasks.actionsCol">الإجراءات</th>
+                </tr></thead>
                 <tbody id="adminAccountRows"></tbody>
               </table>
             </div>
+            <div class="temp-password" id="staffTempPassword" hidden></div>
+            <p class="form-message" id="staffMessage" role="status"></p>
+          </div>
+
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 id="staffFormTitle" data-i18n="admin.staff.new">حساب إداري جديد</h2>
+            </div>
+            <form class="auth-form" id="staffForm" novalidate>
+              <input type="hidden" name="id">
+              <div class="form-grid">
+                <div class="field"><label for="staffName" data-i18n="admin.staff.name">الاسم</label><input id="staffName" name="fullName" required maxlength="160"></div>
+                <div class="field"><label for="staffEmail" data-i18n="field.email">البريد الإلكتروني</label><input id="staffEmail" name="email" type="email" required maxlength="190"></div>
+                <div class="field"><label for="staffPhone" data-i18n="field.phone">الجوال</label><input id="staffPhone" name="phone" maxlength="20"></div>
+                <div class="field">
+                  <label for="staffStatus" data-i18n="table.status">الحالة</label>
+                  <select id="staffStatus" name="status">
+                    <option value="active" data-i18n="admin.staff.active">نشط</option>
+                    <option value="inactive" data-i18n="admin.staff.inactive">موقوف</option>
+                  </select>
+                </div>
+                <fieldset class="field full staff-roles">
+                  <legend data-i18n="admin.staff.roles">الأدوار</legend>
+                  <div id="staffRoleChecks"></div>
+                </fieldset>
+              </div>
+              <div class="inline-actions">
+                <button class="btn" type="submit" data-i18n="admin.staff.save">حفظ</button>
+                <button class="btn secondary" type="button" id="staffFormReset" data-i18n="admin.staff.new">حساب إداري جديد</button>
+              </div>
+            </form>
           </div>
         </section>
 
@@ -1221,18 +1268,57 @@
         <section class="admin-section" data-admin-section="logs">
           <div class="admin-panel">
             <div class="admin-panel-header">
-              <h2 data-i18n="admin.logs">السجلات</h2>
+              <h2 data-i18n="admin.audit.title">سجل التدقيق</h2>
+              <div class="inline-actions">
+                <label class="permission-check" id="auditScopeWrap" hidden><input type="checkbox" id="auditScopeAll"> <span data-i18n="admin.rep.scopeAll">موحّد (كل الفروع)</span></label>
+                <button class="btn small secondary" type="button" id="auditExport" data-i18n="admin.fin.exportExcel">تصدير Excel</button>
+              </div>
             </div>
+            <form class="member-filter" id="auditFilterForm">
+              <input type="search" name="action" data-i18n-placeholder="admin.audit.actionPlaceholder" placeholder="الإجراء (مثل payment. أو membership.freeze)">
+              <select name="actorType" aria-label="نوع المنفذ">
+                <option value="" data-i18n="admin.audit.anyActor">كل المنفذين</option>
+                <option value="admin" data-i18n="admin.audit.admins">الموظفون</option>
+                <option value="user" data-i18n="admin.audit.members">الأعضاء</option>
+              </select>
+              <input type="date" name="from" aria-label="من تاريخ">
+              <input type="date" name="to" aria-label="إلى تاريخ">
+              <button class="btn small secondary" type="submit" data-i18n="admin.tasks.search">بحث</button>
+            </form>
             <div class="table-shell">
               <table class="table">
-                <thead><tr><th>الرقم</th><th>المستوى</th><th>الرسالة</th><th>التاريخ</th></tr></thead>
+                <thead><tr>
+                  <th data-i18n="admin.fin.date">التاريخ</th>
+                  <th data-i18n="admin.audit.actor">المنفذ</th>
+                  <th data-i18n="admin.audit.action">الإجراء</th>
+                  <th data-i18n="admin.audit.resource">المورد</th>
+                  <th data-i18n="admin.rep.branch">الفرع</th>
+                  <th>IP</th>
+                  <th data-i18n="admin.audit.details">التفاصيل</th>
+                </tr></thead>
                 <tbody id="logRows"></tbody>
               </table>
             </div>
+            <div class="pager" id="auditPager"></div>
           </div>
         </section>
       </section>
     </main>
+
+    <dialog class="password-dialog" id="passwordDialog">
+      <form id="passwordChangeForm" novalidate>
+        <h2 data-i18n="admin.pw.title">غيّر كلمة المرور للمتابعة</h2>
+        <p class="muted" data-i18n="admin.pw.body">هذا أول دخول لك أو تمت إعادة تعيين كلمة مرورك. اختر كلمة مرور جديدة (8 أحرف على الأقل مع حرف كبير ورقم ورمز).</p>
+        <label for="pwCurrent" data-i18n="admin.pw.current">كلمة المرور المؤقتة</label>
+        <input id="pwCurrent" type="password" autocomplete="current-password" required>
+        <label for="pwNew" data-i18n="admin.pw.new">كلمة المرور الجديدة</label>
+        <input id="pwNew" type="password" autocomplete="new-password" required>
+        <label for="pwConfirm" data-i18n="admin.pw.confirm">تأكيد كلمة المرور</label>
+        <input id="pwConfirm" type="password" autocomplete="new-password" required>
+        <button class="btn" type="submit" data-i18n="admin.pw.submit">حفظ والمتابعة</button>
+        <p class="form-message" id="pwMessage" role="status"></p>
+      </form>
+    </dialog>
 
     <script src="/assets/js/data.js"></script>
     <script src="/assets/js/i18n.js"></script>
