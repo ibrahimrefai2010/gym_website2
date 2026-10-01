@@ -1359,6 +1359,276 @@
     });
   }
 
+  // Finance reports (Part 2 §2.0.6). The server decides the branch scope;
+  // "consolidated" is only offered to admins who can switch branches, and
+  // the server refuses it (403) for anyone else regardless of this toggle.
+  const ZAKAT_FIELDS = ["cash_on_hand", "bank_balances", "receivables", "inventory", "prepaid_expenses", "current_liabilities"];
+
+  function presetRange(preset) {
+    const now = new Date();
+    const y = now.getUTCFullYear();
+    const m = now.getUTCMonth();
+    const iso = (date) => date.toISOString().slice(0, 10);
+    const day = (yy, mm, dd) => new Date(Date.UTC(yy, mm, dd));
+    const q = Math.floor(m / 3);
+    switch (preset) {
+      case "lastMonth":
+        return { from: iso(day(y, m - 1, 1)), to: iso(day(y, m, 0)) };
+      case "quarter":
+        return { from: iso(day(y, q * 3, 1)), to: iso(now) };
+      case "lastQuarter":
+        return { from: iso(day(y, q * 3 - 3, 1)), to: iso(day(y, q * 3, 0)) };
+      case "year":
+        return { from: iso(day(y, 0, 1)), to: iso(now) };
+      default:
+        return { from: iso(day(y, m, 1)), to: iso(now) };
+    }
+  }
+
+  function reportParams(kind) {
+    const form = document.querySelector(`[data-report-form="${kind}"]`);
+    const params = new URLSearchParams();
+    if (form) {
+      const data = Object.fromEntries(new FormData(form).entries());
+      if (data.preset) {
+        const range = data.preset === "custom" ? { from: data.from, to: data.to } : presetRange(data.preset);
+        if (range.from) params.set("from", range.from);
+        if (range.to) params.set("to", range.to);
+      }
+      if (data.hijriYear) params.set("hijriYear", data.hijriYear);
+      if (data.year) params.set("year", data.year);
+    }
+    if (state.reportScope === "all") {
+      params.set("scope", "all");
+    }
+    return params;
+  }
+
+  function branchCell(entry) {
+    return escapeHtml(entry?.branch ? localize(entry.branch.name) : t("admin.rep.consolidated"));
+  }
+
+  function reportTable(headers, rows) {
+    return `<div class="table-shell"><table class="table"><thead><tr>${headers.map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead>
+      <tbody>${rows.join("")}</tbody></table></div>`;
+  }
+
+  function withConsolidatedRow(data, render) {
+    const rows = data.branches.map((entry) => render(entry, false));
+    if (data.branches.length > 1) {
+      rows.push(render({ ...data.consolidated, branch: null }, true));
+    }
+    return rows;
+  }
+
+  function renderVat(data) {
+    const rows = withConsolidatedRow(data, (entry, total) => `
+      <tr class="${total ? "report-total" : ""}">
+        <td>${branchCell(entry)}</td>
+        <td>${escapeHtml(entry.invoiceCount)}</td>
+        <td>${escapeHtml(money(entry.taxableAmount, "SAR"))}</td>
+        <td>${escapeHtml(money(entry.outputVat, "SAR"))}</td>
+        <td>${escapeHtml(money(entry.grossTotal, "SAR"))}</td>
+      </tr>`);
+    const methods = data.byMethod.map(
+      (row) => `<tr><td>${escapeHtml(finLabel("method", row.method))}</td><td>${escapeHtml(row.invoiceCount)}</td><td>${escapeHtml(money(row.taxableAmount, "SAR"))}</td><td>${escapeHtml(money(row.outputVat, "SAR"))}</td></tr>`
+    );
+    setHtml(
+      "#vatReport",
+      `<p class="muted">${escapeHtml(`${data.range.from} → ${data.range.to}`)}</p>
+      ${reportTable([t("admin.rep.branch"), t("admin.rep.invoices"), t("admin.rep.taxable"), t("admin.rep.outputVat"), t("admin.rep.grossTotal")], rows)}
+      ${
+        methods.length
+          ? `<p class="portal-section-title">${escapeHtml(t("admin.rep.byMethod"))}</p>${reportTable([t("admin.fin.method"), t("admin.rep.invoices"), t("admin.rep.taxable"), t("admin.rep.outputVat")], methods)}`
+          : `<p class="muted">${escapeHtml(t("admin.rep.noInvoicesInRange"))}</p>`
+      }`
+    );
+  }
+
+  function renderZakat(data) {
+    const rows = withConsolidatedRow(data, (entry, total) => {
+      const system = entry.system || {};
+      return `
+        <tr class="${total ? "report-total" : ""}">
+          <td>${branchCell(entry)}</td>
+          <td>${escapeHtml(money(system.revenueGross, "SAR"))}</td>
+          <td>${escapeHtml(money(system.revenueNet, "SAR"))}</td>
+          <td>${escapeHtml(money(system.vatCollected, "SAR"))}</td>
+          <td>${escapeHtml(money(system.expenses, "SAR"))}</td>
+          <td>${escapeHtml(money(system.receivablesOpen, "SAR"))}</td>
+        </tr>`;
+    });
+    setHtml(
+      "#zakatReport",
+      `<p class="muted">${escapeHtml(t("admin.rep.hijriRange").replace("{year}", data.hijriYear).replace("{from}", data.bounds.start).replace("{to}", data.bounds.end))}</p>
+      ${reportTable([t("admin.rep.branch"), t("admin.rep.revenueGross"), t("admin.rep.revenueNet"), t("admin.rep.vatCollected"), t("admin.rep.expenses"), t("admin.rep.receivablesOpen")], rows)}`
+    );
+    // Inputs belong to one branch: only editable in single-branch view.
+    const form = document.querySelector("#zakatInputsForm");
+    const mine = state.reportScope === "all" ? null : data.branches[0];
+    if (form) {
+      form.hidden = !mine;
+    }
+    if (mine) {
+      setHtml(
+        "#zakatInputFields",
+        ZAKAT_FIELDS.map(
+          (field) => `
+          <div class="field">
+            <label for="zakat_${field}">${escapeHtml(t(`admin.rep.z.${field}`))}</label>
+            <input id="zakat_${field}" name="${field}" type="number" step="0.01" value="${mine.inputs[field] == null ? "" : escapeHtml(mine.inputs[field])}">
+          </div>`
+        ).join("")
+      );
+      const notes = document.querySelector("#zakatNotes");
+      if (notes) notes.value = mine.notes || "";
+      state.zakatOtherInputs = mine.otherInputs || [];
+    }
+  }
+
+  function renderRevenue(data) {
+    const max = Math.max(...data.months.map((m) => m.revenue), 1);
+    const monthName = new Intl.DateTimeFormat(window.GymI18n.currentLang() === "ar" ? "ar-SA" : "en-US", { month: "short", timeZone: "UTC" });
+    const bars = data.months
+      .map(
+        (m) => `<div class="rev-bar" title="${escapeHtml(money(m.revenue, "SAR"))}">
+          <span style="--h:${((m.revenue / max) * 100).toFixed(1)}%"></span>
+          <small>${escapeHtml(monthName.format(new Date(Date.UTC(data.year, m.month - 1, 1))))}</small>
+        </div>`
+      )
+      .join("");
+    const branchRows = withConsolidatedRow(data, (entry, total) => `<tr class="${total ? "report-total" : ""}"><td>${branchCell(entry)}</td><td>${escapeHtml(entry.payments)}</td><td>${escapeHtml(money(entry.revenue, "SAR"))}</td></tr>`);
+    const planRows = data.byPlan.map((row) => `<tr><td>${escapeHtml(localize(row.name))}</td><td>${escapeHtml(row.payments)}</td><td>${escapeHtml(money(row.revenue, "SAR"))}</td></tr>`);
+    setHtml(
+      "#revenueReport",
+      `<div class="rev-chart" role="img" aria-label="${escapeHtml(t("admin.rep.revenue"))}">${bars}</div>
+      ${reportTable([t("admin.rep.branch"), t("admin.rep.payments"), t("admin.rep.revenueCol")], branchRows)}
+      ${planRows.length ? `<p class="portal-section-title">${escapeHtml(t("admin.rep.byPlan"))}</p>${reportTable([t("admin.fin.plan"), t("admin.rep.payments"), t("admin.rep.revenueCol")], planRows)}` : ""}`
+    );
+  }
+
+  function renderChurn(data) {
+    const pct = (value) => (value == null ? "—" : `${value}%`);
+    const rows = withConsolidatedRow(data, (entry, total) => `
+      <tr class="${total ? "report-total" : ""}">
+        <td>${branchCell(entry)}</td>
+        <td>${escapeHtml(entry.renewed)}</td>
+        <td>${escapeHtml(entry.churned)}</td>
+        <td>${escapeHtml(pct(entry.renewalRate))}</td>
+        <td>${escapeHtml(pct(entry.churnRate))}</td>
+      </tr>`);
+    setHtml(
+      "#churnReport",
+      `<p class="muted">${escapeHtml(`${data.range.from} → ${data.range.to}`)} · ${escapeHtml(t("admin.rep.churnHelp"))}</p>
+      ${reportTable([t("admin.rep.branch"), t("admin.rep.renewed"), t("admin.rep.churned"), t("admin.rep.renewalRate"), t("admin.rep.churnRate")], rows)}`
+    );
+  }
+
+  const REPORT_RENDERERS = { vat: renderVat, zakat: renderZakat, "revenue-annual": renderRevenue, churn: renderChurn };
+  const REPORT_TARGETS = { vat: "#vatReport", zakat: "#zakatReport", "revenue-annual": "#revenueReport", churn: "#churnReport" };
+
+  async function loadReport(kind) {
+    try {
+      const data = await window.GymApi.request(`/api/v1/reports/${kind}?${reportParams(kind).toString()}`);
+      REPORT_RENDERERS[kind](data);
+    } catch (error) {
+      setHtml(REPORT_TARGETS[kind], `<p class="form-message">${escapeHtml(error.message || t("admin.rep.failed"))}</p>`);
+    }
+  }
+
+  function loadReports() {
+    Object.keys(REPORT_RENDERERS).forEach((kind) => loadReport(kind));
+  }
+
+  function setupReports() {
+    state.reportScope = "branch";
+    const yearInput = document.querySelector("#revenueYear");
+    if (yearInput) yearInput.value = String(new Date().getUTCFullYear());
+
+    document.querySelectorAll("[data-report-form]").forEach((form) => {
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        loadReport(form.dataset.reportForm);
+      });
+      form.querySelector('select[name="preset"]')?.addEventListener("change", (event) => {
+        const custom = event.target.value === "custom";
+        form.querySelectorAll('input[type="date"]').forEach((input) => {
+          input.hidden = !custom;
+        });
+        if (!custom) loadReport(form.dataset.reportForm);
+      });
+      form.querySelectorAll('input[type="date"]').forEach((input) => {
+        input.hidden = true;
+      });
+    });
+
+    document.querySelectorAll("[data-report-scope]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.reportScope = button.dataset.reportScope;
+        document.querySelectorAll("[data-report-scope]").forEach((other) => other.classList.toggle("is-active", other === button));
+        loadReports();
+      });
+    });
+
+    document.querySelectorAll("[data-report-export]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const kind = button.dataset.reportExport;
+        const params = reportParams(kind);
+        params.set("format", "xlsx");
+        params.set("lang", window.GymI18n.currentLang());
+        const label = button.textContent;
+        button.disabled = true;
+        button.textContent = t("admin.exportRunning");
+        try {
+          await window.GymApi.download(`/api/v1/reports/${kind}?${params.toString()}`, `${kind}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+        } catch (error) {
+          window.alert(error.message || t("admin.exportFailed"));
+        } finally {
+          button.disabled = false;
+          button.textContent = label;
+        }
+      });
+    });
+
+    document.querySelector("#zakatInputsForm")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const submit = form.querySelector('button[type="submit"]');
+      const values = Object.fromEntries(new FormData(form).entries());
+      const branch = currentBranchLabel();
+      if (!window.confirm(t("admin.rep.confirmSave").replace("{branch}", branch ? localize(branch.name) : ""))) {
+        return;
+      }
+      submit.disabled = true;
+      try {
+        await window.GymApi.request("/api/v1/reports/zakat", {
+          method: "PUT",
+          body: JSON.stringify({
+            hijriYear: document.querySelector("#zakatYear")?.value || undefined,
+            inputs: Object.fromEntries(ZAKAT_FIELDS.map((field) => [field, values[field] === "" ? null : values[field]])),
+            otherInputs: state.zakatOtherInputs || [],
+            notes: values.notes || ""
+          })
+        });
+        setMessage("#zakatMessage", t("admin.rep.saved"), true);
+        loadReport("zakat");
+      } catch (error) {
+        setMessage("#zakatMessage", error.message || t("admin.rep.failed"), false);
+      } finally {
+        submit.disabled = false;
+      }
+    });
+
+    document.querySelector('[data-admin-tab="reports"]')?.addEventListener("click", () => {
+      const scope = document.querySelector("#reportScope");
+      if (scope) scope.hidden = !canSwitchBranchesClientSide();
+      if (!state.reportsLoaded) {
+        state.reportsLoaded = true;
+        loadReports();
+      }
+    });
+  }
+
   // Leads/CRM (Part 2): same on-demand, filtered + paginated pattern as
   // loadTasks above (replaces the old one-shot /api/v1/messages fetch inside
   // load()'s Promise.all, which returned a flat, unfiltered array of up to
@@ -2984,6 +3254,7 @@
     setupTasks();
     setupCheckin();
     setupFinance();
+    setupReports();
     setupSession();
     setupBranchSwitcher();
     load();

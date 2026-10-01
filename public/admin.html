@@ -42,6 +42,7 @@
           <button type="button" data-admin-tab="settings" data-i18n="admin.settings">الإعدادات</button>
           <button type="button" data-admin-tab="payments" data-i18n="admin.payments">المدفوعات</button>
           <button type="button" data-admin-tab="statistics" data-i18n="admin.statistics">الإحصائيات</button>
+          <button type="button" data-admin-tab="reports" data-i18n="admin.rep.title">التقارير المالية</button>
           <button type="button" data-admin-tab="adminAccounts" data-i18n="admin.adminAccounts">حسابات الإدارة</button>
           <button type="button" data-admin-tab="access">Access Control</button>
           <button type="button" data-admin-tab="aiAssistant">AI Assistant</button>
@@ -804,6 +805,104 @@
                 <tbody id="overdueRows"></tbody>
               </table>
             </div>
+          </div>
+        </section>
+
+        <section class="admin-section" data-admin-section="reports">
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.rep.title">التقارير المالية</h2>
+              <div class="inline-actions report-scope" id="reportScope" hidden>
+                <button class="btn small secondary is-active" type="button" data-report-scope="branch" data-i18n="admin.rep.scopeBranch">هذا الفرع</button>
+                <button class="btn small secondary" type="button" data-report-scope="all" data-i18n="admin.rep.scopeAll">موحّد (كل الفروع)</button>
+              </div>
+            </div>
+            <p class="muted" data-i18n="admin.rep.note">تقارير داخلية للمحاسب. الزكاة لا تظهر أبدًا في فواتير العملاء.</p>
+          </div>
+
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.rep.vat">ضريبة القيمة المضافة</h2>
+              <div class="inline-actions">
+                <button class="btn small secondary" type="button" data-report-export="vat" data-i18n="admin.fin.exportExcel">تصدير Excel</button>
+              </div>
+            </div>
+            <form class="member-filter" data-report-form="vat">
+              <select name="preset" aria-label="الفترة">
+                <option value="month" data-i18n="admin.rep.thisMonth">هذا الشهر</option>
+                <option value="lastMonth" data-i18n="admin.rep.lastMonth">الشهر الماضي</option>
+                <option value="quarter" data-i18n="admin.rep.thisQuarter">هذا الربع</option>
+                <option value="lastQuarter" data-i18n="admin.rep.lastQuarter">الربع الماضي</option>
+                <option value="year" data-i18n="admin.rep.thisYear">هذه السنة</option>
+                <option value="custom" data-i18n="admin.rep.custom">فترة مخصصة</option>
+              </select>
+              <input type="date" name="from" aria-label="من تاريخ">
+              <input type="date" name="to" aria-label="إلى تاريخ">
+              <button class="btn small secondary" type="submit" data-i18n="admin.rep.run">عرض</button>
+            </form>
+            <div id="vatReport" class="report-body"></div>
+          </div>
+
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.rep.zakat">ورقة عمل الزكاة</h2>
+              <div class="inline-actions">
+                <button class="btn small secondary" type="button" data-report-export="zakat" data-i18n="admin.fin.exportExcel">تصدير Excel</button>
+              </div>
+            </div>
+            <form class="member-filter" data-report-form="zakat">
+              <label for="zakatYear" data-i18n="admin.rep.hijriYear">السنة الهجرية</label>
+              <input type="number" id="zakatYear" name="hijriYear" min="1440" max="1500" step="1">
+              <button class="btn small secondary" type="submit" data-i18n="admin.rep.run">عرض</button>
+            </form>
+            <div id="zakatReport" class="report-body"></div>
+            <form class="auth-form" id="zakatInputsForm" novalidate>
+              <p class="portal-section-title" data-i18n="admin.rep.zakatInputs">مدخلات المحاسب (لهذا الفرع)</p>
+              <div class="form-grid" id="zakatInputFields"></div>
+              <div class="field full">
+                <label for="zakatNotes" data-i18n="admin.rep.notes">ملاحظات</label>
+                <textarea id="zakatNotes" name="notes" rows="3" maxlength="5000"></textarea>
+              </div>
+              <button class="btn" type="submit" data-i18n="admin.rep.saveInputs">حفظ المدخلات</button>
+              <p class="form-message" id="zakatMessage" role="status"></p>
+            </form>
+          </div>
+
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.rep.revenue">الإيرادات السنوية</h2>
+              <div class="inline-actions">
+                <button class="btn small secondary" type="button" data-report-export="revenue-annual" data-i18n="admin.fin.exportExcel">تصدير Excel</button>
+              </div>
+            </div>
+            <form class="member-filter" data-report-form="revenue-annual">
+              <label for="revenueYear" data-i18n="admin.rep.year">السنة</label>
+              <input type="number" id="revenueYear" name="year" min="2000" max="2100" step="1">
+              <button class="btn small secondary" type="submit" data-i18n="admin.rep.run">عرض</button>
+            </form>
+            <div id="revenueReport" class="report-body"></div>
+          </div>
+
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.rep.churn">التجديد والانسحاب</h2>
+              <div class="inline-actions">
+                <button class="btn small secondary" type="button" data-report-export="churn" data-i18n="admin.fin.exportExcel">تصدير Excel</button>
+              </div>
+            </div>
+            <form class="member-filter" data-report-form="churn">
+              <select name="preset" aria-label="الفترة">
+                <option value="month" data-i18n="admin.rep.thisMonth">هذا الشهر</option>
+                <option value="lastMonth" data-i18n="admin.rep.lastMonth">الشهر الماضي</option>
+                <option value="quarter" data-i18n="admin.rep.thisQuarter">هذا الربع</option>
+                <option value="year" data-i18n="admin.rep.thisYear">هذه السنة</option>
+                <option value="custom" data-i18n="admin.rep.custom">فترة مخصصة</option>
+              </select>
+              <input type="date" name="from" aria-label="من تاريخ">
+              <input type="date" name="to" aria-label="إلى تاريخ">
+              <button class="btn small secondary" type="submit" data-i18n="admin.rep.run">عرض</button>
+            </form>
+            <div id="churnReport" class="report-body"></div>
           </div>
         </section>
 

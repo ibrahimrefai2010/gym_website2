@@ -2969,3 +2969,49 @@ html[dir="rtl"] .hero::after {
 #manualPaymentForm .inline-actions + select {
   margin-block-start: 8px;
 }
+
+/* ---- Admin finance reports ---- */
+.report-scope .btn.is-active {
+  background: var(--color-gold);
+  color: var(--color-black);
+  border-color: var(--color-gold);
+}
+
+.report-body {
+  display: grid;
+  gap: 12px;
+}
+
+.report-total td {
+  font-weight: 800;
+  border-block-start: 2px solid rgba(200, 168, 103, 0.6);
+}
+
+.rev-chart {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 6px;
+  align-items: end;
+  height: 160px;
+  padding-block: 8px;
+}
+
+.rev-bar {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  height: 100%;
+  text-align: center;
+}
+
+.rev-bar span {
+  align-self: end;
+  height: var(--h, 0%);
+  min-height: 2px;
+  border-radius: 3px 3px 0 0;
+  background: var(--color-gold);
+}
+
+.rev-bar small {
+  font-size: 10px;
+  color: var(--color-muted);
+}
