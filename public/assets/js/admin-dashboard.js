@@ -347,7 +347,7 @@
     const data = state.members || { items: [], pagination: {} };
     const items = data.items || [];
     if (!items.length) {
-      setHtml("#adminUsers", `<tr><td colspan="6">${escapeHtml(t("admin.memberNone"))}</td></tr>`);
+      setHtml("#adminUsers", `<tr><td colspan="7">${escapeHtml(t("admin.memberNone"))}</td></tr>`);
       setHtml("#memberPager", "");
       return;
     }
@@ -358,11 +358,12 @@
           (member) => `
             <tr data-member-id="${escapeHtml(member.id)}" tabindex="0">
               <td>${escapeHtml(member.memberCode || member.member_code || "—")}</td>
-              <td>${escapeHtml(member.fullName)}</td>
-              <td>${escapeHtml(member.email)}</td>
-              <td>${escapeHtml(member.phone || "")}</td>
-              <td>${escapeHtml(member.membershipPlan || member.membership || "—")}</td>
-              <td>${escapeHtml(statusLabel(member.status))}</td>
+              <td>${escapeHtml(member.fullName)}<br><small class="muted">${escapeHtml(member.phone || "")}</small></td>
+              <td>${escapeHtml(member.membershipPlanAr || member.membershipPlan || member.membership || "—")}</td>
+              <td><span class="mem-status mem-${escapeHtml(member.membershipStatus || "none")}">${escapeHtml(memberStatusLabel(member))}</span></td>
+              <td>${member.endDate ? `${escapeHtml(formatDate(member.endDate))}${member.daysRemaining != null && member.daysRemaining >= 0 ? `<br><small class="muted">${escapeHtml(t("admin.mem.daysLeft").replace("{n}", member.daysRemaining))}</small>` : ""}` : "—"}</td>
+              <td>${escapeHtml(member.coach ? localize(member.coach.name) : "—")}</td>
+              <td>${escapeHtml(member.lastVisit ? formatDate(member.lastVisit) : t("admin.mem.never"))}</td>
             </tr>`
         )
         .join("")
@@ -388,6 +389,10 @@
     if (f.search) params.set("search", f.search);
     if (f.status) params.set("status", f.status);
     if (f.membershipStatus) params.set("membershipStatus", f.membershipStatus);
+    ["planId", "coachId", "expiringWithin", "inactiveDays", "sort"].forEach((key) => {
+      if (f[key]) params.set(key, f[key]);
+    });
+    fillMemberFilterOptions();
     try {
       state.members = await window.GymApi.request(`/api/v1/customers?${params.toString()}`);
       state.membersMode = "full";
@@ -416,6 +421,8 @@
       const detail = await window.GymApi.request(`/api/v1/customers/${encodeURIComponent(memberId)}`);
       const c = detail.customer || {};
       const p = detail.profile || {};
+      state.memberDetail = { id: memberId, detail };
+      renderMemberActions();
       document.querySelector("#memberDetailName").textContent = c.fullName || "—";
       const avatar = document.querySelector("#memberDetailAvatar");
       if (avatar) {
@@ -457,11 +464,26 @@
           ? detail.payments
               .map(
                 (pay) =>
-                  `<tr><td>${escapeHtml(money(pay.amount, pay.currency))}</td><td>${escapeHtml(pay.payment_method || "—")}</td><td>${escapeHtml(statusLabel(pay.status))}</td><td>${formatDate(pay.completed_at || pay.created_at)}</td></tr>`
+                  `<tr><td>${escapeHtml(money(pay.amount, pay.currency))}</td><td>${escapeHtml(finLabel("method", pay.payment_method))}</td><td>${escapeHtml(finLabel("status", pay.status))}</td><td>${formatDate(pay.completed_at || pay.created_at)}</td></tr>`
               )
               .join("")
           : `<tr><td>${escapeHtml(t("portal.payments.none"))}</td></tr>`
       );
+      const invoiceRows = (detail.invoices || []).map(
+        (inv) => `<tr class="muted-row"><td>${invoicePdfLink(inv.id, inv.invoice_number)}</td><td>${escapeHtml(money(inv.total, "SAR"))}</td><td>${escapeHtml(finLabel("inv", inv.status))}</td><td>${formatDate(inv.issue_date)}</td></tr>`
+      );
+      if (invoiceRows.length) {
+        document.querySelector("#memberDetailPayments")?.insertAdjacentHTML("beforeend", invoiceRows.join(""));
+      }
+      setHtml(
+        "#memberDetailAttendance",
+        (detail.attendance || []).length
+          ? detail.attendance
+              .map((a) => `<tr><td>${escapeHtml(formatDate(a.check_in_at))}</td><td>${escapeHtml(formatTime(a.check_in_at))}</td><td>${escapeHtml(formatTime(a.check_out_at))}</td><td>${escapeHtml(checkinMethodLabel(a.method))}</td></tr>`)
+              .join("")
+          : `<tr><td>${escapeHtml(t("admin.mem.noVisits"))}</td></tr>`
+      );
+      loadMemberNotes(memberId);
       const contacts = detail.emergencyContacts || [];
       setHtml(
         "#memberDetailEmergency",
@@ -488,7 +510,12 @@
       state.memberFilters = {
         search: document.querySelector("#memberSearch")?.value.trim() || "",
         status: document.querySelector("#memberStatusFilter")?.value || "",
-        membershipStatus: document.querySelector("#memberMembershipFilter")?.value || ""
+        membershipStatus: document.querySelector("#memberMembershipFilter")?.value || "",
+        planId: document.querySelector("#memberPlanFilter")?.value || "",
+        coachId: document.querySelector("#memberCoachFilter")?.value || "",
+        expiringWithin: document.querySelector("#memberExpiringFilter")?.value || "",
+        inactiveDays: document.querySelector("#memberAtRiskFilter")?.checked ? "14" : "",
+        sort: document.querySelector("#memberSort")?.value || "newest"
       };
       loadMembers(1);
     });
@@ -1853,6 +1880,173 @@
     });
 
     document.querySelector('[data-admin-tab="coaches"]')?.addEventListener("click", () => loadCoaches());
+  }
+
+  // Member actions (Part 2 §2.0.1). Every consequential action names the
+  // branch in its confirmation; the server re-checks branch ownership.
+  function memberStatusLabel(member) {
+    const key = member.membershipStatus || "none";
+    const label = t(`admin.mem.status.${key}`);
+    return label === `admin.mem.status.${key}` ? statusLabel(key) : label;
+  }
+
+  function fillMemberFilterOptions() {
+    const planSelect = document.querySelector("#memberPlanFilter");
+    if (planSelect && planSelect.options.length <= 1) {
+      (state.plans || []).forEach((plan) => planSelect.insertAdjacentHTML("beforeend", `<option value="${escapeHtml(plan.id)}">${escapeHtml(planName(plan))}</option>`));
+    }
+    const coachSelect = document.querySelector("#memberCoachFilter");
+    if (coachSelect && coachSelect.options.length <= 1 && !state.memberCoachOptionsLoaded) {
+      state.memberCoachOptionsLoaded = true;
+      window.GymApi.request("/api/v1/coaches")
+        .then((coaches) =>
+          coaches.forEach((coach) => coachSelect.insertAdjacentHTML("beforeend", `<option value="${escapeHtml(coach.id)}">${escapeHtml(localize(coach.name))}</option>`))
+        )
+        .catch(() => {});
+    }
+  }
+
+  function activeMembershipOf(detail) {
+    return (detail.memberships || []).find((m) => m.status === "active" && (!m.end_date || new Date(m.end_date) >= new Date(new Date().toISOString().slice(0, 10))));
+  }
+
+  function renderMemberActions() {
+    const current = state.memberDetail?.detail;
+    if (!current) {
+      return;
+    }
+    const c = current.customer || {};
+    const active = activeMembershipOf(current);
+    const buttons = [
+      ["renew", "admin.mem.renew", "secondary"],
+      active ? ["freeze", "admin.mem.freeze", "secondary"] : null,
+      active ? ["unfreeze", "admin.mem.unfreeze", "secondary"] : null,
+      active ? ["extend", "admin.mem.extend", "secondary"] : null,
+      c.status === "suspended" ? ["reactivate", "admin.mem.reactivate", "secondary"] : ["suspend", "admin.mem.suspend", "secondary"],
+      ["card", "admin.mem.newCard", "secondary"],
+      ["delete", "admin.mem.delete", "danger"]
+    ].filter(Boolean);
+    setHtml(
+      "#memberActions",
+      buttons.map(([action, key, tone]) => `<button class="btn small ${tone}" type="button" data-member-action="${action}">${escapeHtml(t(key))}</button>`).join("")
+    );
+  }
+
+  function branchSuffix() {
+    const branch = currentBranchLabel();
+    return branch ? localize(branch.name) : "";
+  }
+
+  function askDaysAndReason(daysKey) {
+    const days = window.prompt(t(daysKey));
+    if (days === null) return null;
+    const n = Number.parseInt(days, 10);
+    if (!Number.isInteger(n) || n < 1 || n > 365) {
+      window.alert(t("admin.mem.daysInvalid"));
+      return null;
+    }
+    const reason = window.prompt(t("admin.mem.reasonPrompt"));
+    if (reason === null) return null;
+    if (reason.trim().length < 3) {
+      window.alert(t("admin.mem.reasonRequired"));
+      return null;
+    }
+    return { days: n, reason: reason.trim() };
+  }
+
+  async function runMemberAction(action) {
+    const current = state.memberDetail;
+    if (!current) return;
+    const { id, detail } = current;
+    const c = detail.customer || {};
+    const active = activeMembershipOf(detail);
+    const confirmText = (key, extra = "") =>
+      window.confirm(`${t(key).replace("{name}", c.fullName || "").replace("{branch}", branchSuffix())}${extra}`);
+    let request = null;
+    if (action === "renew") {
+      document.querySelector('[data-admin-tab="payments"]')?.click();
+      const search = document.querySelector("#manualPaymentMember");
+      if (search) {
+        search.value = c.memberCode || c.phone || "";
+        document.querySelector("#manualPaymentFind")?.click();
+        document.querySelector("#manualPaymentForm")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      return;
+    }
+    if (action === "freeze") {
+      const input = askDaysAndReason("admin.mem.freezeDays");
+      if (!input || !confirmText("admin.mem.confirmFreeze", ` (${input.days})`)) return;
+      request = [`/api/v1/memberships/${active.id}/action`, "PATCH", { action: "freeze", ...input }];
+    } else if (action === "unfreeze") {
+      if (!confirmText("admin.mem.confirmUnfreeze")) return;
+      request = [`/api/v1/memberships/${active.id}/action`, "PATCH", { action: "unfreeze" }];
+    } else if (action === "extend") {
+      const input = askDaysAndReason("admin.mem.extendDays");
+      if (!input || !confirmText("admin.mem.confirmExtend", ` (+${input.days})`)) return;
+      request = [`/api/v1/memberships/${active.id}/action`, "PATCH", { action: "extend", ...input }];
+    } else if (action === "suspend" || action === "reactivate") {
+      if (!confirmText(action === "suspend" ? "admin.mem.confirmSuspend" : "admin.mem.confirmReactivate")) return;
+      request = [`/api/v1/customers/${id}`, "PATCH", { status: action === "suspend" ? "suspended" : "active" }];
+    } else if (action === "card") {
+      if (!confirmText("admin.mem.confirmCard")) return;
+      request = [`/api/v1/customers/${id}/card`, "POST", {}];
+    } else if (action === "delete") {
+      if (!confirmText("admin.mem.confirmDelete")) return;
+      request = [`/api/v1/customers/${id}`, "DELETE", undefined];
+    }
+    if (!request) return;
+    document.querySelectorAll("[data-member-action]").forEach((button) => (button.disabled = true));
+    try {
+      const [path, method, body] = request;
+      await window.GymApi.request(path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
+      setMessage("#memberDetailMessage", t("admin.mem.done"), true);
+      if (action === "delete") {
+        document.querySelector("#memberDetail").hidden = true;
+      } else {
+        await loadMemberDetail(id);
+      }
+      loadMembers(state.members?.pagination?.page || 1);
+    } catch (error) {
+      setMessage("#memberDetailMessage", error.message, false);
+      document.querySelectorAll("[data-member-action]").forEach((button) => (button.disabled = false));
+    }
+  }
+
+  async function loadMemberNotes(memberId) {
+    try {
+      const notes = await window.GymApi.request(`/api/v1/customers/${encodeURIComponent(memberId)}/notes`);
+      setHtml(
+        "#memberNotes",
+        notes.length
+          ? notes
+              .map((n) => `<li><p>${escapeHtml(n.note)}</p><small class="muted">${escapeHtml([n.author, formatDate(n.created_at), formatTime(n.created_at)].filter(Boolean).join(" · "))}</small></li>`)
+              .join("")
+          : `<li class="muted">${escapeHtml(t("admin.leads.notesNone"))}</li>`
+      );
+    } catch (_error) {
+      setHtml("#memberNotes", "");
+    }
+  }
+
+  function setupMemberActions() {
+    document.querySelector("#memberActions")?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-member-action]");
+      if (button && !button.disabled) runMemberAction(button.dataset.memberAction);
+    });
+    document.querySelector("#memberNoteForm")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const input = document.querySelector("#memberNoteInput");
+      const note = input?.value.trim();
+      const memberId = state.memberDetail?.id;
+      if (!note || !memberId) return;
+      try {
+        await window.GymApi.request(`/api/v1/customers/${encodeURIComponent(memberId)}/notes`, { method: "POST", body: JSON.stringify({ note }) });
+        input.value = "";
+        loadMemberNotes(memberId);
+      } catch (error) {
+        setMessage("#memberDetailMessage", error.message, false);
+      }
+    });
   }
 
   // Leads/CRM (Part 2): same on-demand, filtered + paginated pattern as
@@ -3509,6 +3703,7 @@
     setupFinance();
     setupReports();
     setupCoaches();
+    setupMemberActions();
     setupSession();
     setupBranchSwitcher();
     load();

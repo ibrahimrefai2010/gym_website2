@@ -147,9 +147,30 @@
               <select id="memberMembershipFilter" name="membershipStatus">
                 <option value="" data-i18n="admin.filterAnyMembership">كل العضويات</option>
                 <option value="active" data-i18n="admin.mActive">عضوية نشطة</option>
-                <option value="pending" data-i18n="admin.mPending">قيد الانتظار</option>
+                <option value="frozen" data-i18n="admin.mem.frozen">مجمّدة</option>
                 <option value="expired" data-i18n="admin.mExpired">منتهية</option>
-                <option value="cancelled" data-i18n="admin.mCancelled">ملغاة</option>
+                <option value="pending" data-i18n="admin.mPending">قيد الانتظار</option>
+                <option value="suspended" data-i18n="admin.statusSuspended">موقوف</option>
+                <option value="none" data-i18n="admin.mem.none">بدون عضوية</option>
+              </select>
+              <select id="memberPlanFilter" name="planId" aria-label="الباقة">
+                <option value="" data-i18n="admin.mem.anyPlan">كل الباقات</option>
+              </select>
+              <select id="memberCoachFilter" name="coachId" aria-label="المدرب">
+                <option value="" data-i18n="admin.mem.anyCoach">كل المدربين</option>
+              </select>
+              <select id="memberExpiringFilter" name="expiringWithin" aria-label="تنتهي خلال">
+                <option value="" data-i18n="admin.mem.anyExpiry">أي تاريخ انتهاء</option>
+                <option value="1" data-i18n="admin.mem.exp1">تنتهي خلال يوم</option>
+                <option value="3" data-i18n="admin.mem.exp3">تنتهي خلال 3 أيام</option>
+                <option value="7" data-i18n="admin.mem.exp7">تنتهي خلال 7 أيام</option>
+              </select>
+              <label class="permission-check"><input type="checkbox" id="memberAtRiskFilter"> <span data-i18n="admin.mem.atRisk">منقطعون</span></label>
+              <select id="memberSort" name="sort" aria-label="الترتيب">
+                <option value="newest" data-i18n="admin.mem.sortNewest">الأحدث</option>
+                <option value="name" data-i18n="admin.mem.sortName">الاسم</option>
+                <option value="expiry" data-i18n="admin.mem.sortExpiry">الأقرب انتهاءً</option>
+                <option value="lastVisit" data-i18n="admin.mem.sortLastVisit">الأقدم زيارة</option>
               </select>
               <button class="btn small secondary" type="submit" data-i18n="admin.memberSearchBtn">بحث</button>
             </form>
@@ -159,10 +180,11 @@
                   <tr>
                     <th data-i18n="portal.field.memberId">رقم العضو</th>
                     <th data-i18n="table.member">العضو</th>
-                    <th>البريد</th>
-                    <th data-i18n="field.phone">الجوال</th>
                     <th data-i18n="table.plan">الباقة</th>
                     <th data-i18n="table.status">الحالة</th>
+                    <th data-i18n="admin.mem.ends">تنتهي</th>
+                    <th data-i18n="admin.mem.coach">المدرب</th>
+                    <th data-i18n="admin.mem.lastVisit">آخر زيارة</th>
                   </tr>
                 </thead>
                 <tbody id="adminUsers"></tbody>
@@ -182,13 +204,22 @@
               </div>
               <button class="btn small secondary" type="button" id="memberDetailClose" data-i18n="admin.close">إغلاق</button>
             </div>
+            <div class="member-actions" id="memberActions"></div>
             <dl class="data-list" id="memberDetailInfo"></dl>
             <h3 class="portal-section-title" data-i18n="admin.memberMemberships">العضويات</h3>
             <div class="table-shell"><table class="table"><tbody id="memberDetailMemberships"></tbody></table></div>
             <h3 class="portal-section-title" data-i18n="admin.memberPayments">المدفوعات</h3>
             <div class="table-shell"><table class="table"><tbody id="memberDetailPayments"></tbody></table></div>
+            <h3 class="portal-section-title" data-i18n="admin.mem.attendance">سجل الحضور</h3>
+            <div class="table-shell"><table class="table"><tbody id="memberDetailAttendance"></tbody></table></div>
             <h3 class="portal-section-title" data-i18n="portal.account.emergency">جهة اتصال للطوارئ</h3>
             <dl class="data-list" id="memberDetailEmergency"></dl>
+            <h3 class="portal-section-title" data-i18n="admin.mem.notes">ملاحظات داخلية</h3>
+            <form class="inline-actions" id="memberNoteForm">
+              <input type="text" id="memberNoteInput" maxlength="4000" data-i18n-placeholder="admin.mem.notePlaceholder" placeholder="أضف ملاحظة...">
+              <button class="btn small secondary" type="submit" data-i18n="admin.leads.addNote">إضافة ملاحظة</button>
+            </form>
+            <ul class="note-list" id="memberNotes"></ul>
             <p class="form-message" id="memberDetailMessage" aria-live="polite"></p>
           </div>
         </section>

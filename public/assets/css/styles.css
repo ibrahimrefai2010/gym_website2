@@ -3102,3 +3102,48 @@ html[dir="rtl"] .hero::after {
   gap: 10px;
   align-items: center;
 }
+
+/* ---- Admin member profile ---- */
+.member-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-block-end: 14px;
+}
+
+.mem-status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.mem-status.mem-active { background: rgba(31, 138, 76, 0.25); }
+.mem-status.mem-frozen { background: rgba(70, 130, 200, 0.25); }
+.mem-status.mem-expired,
+.mem-status.mem-suspended { background: rgba(181, 18, 29, 0.28); }
+.mem-status.mem-pending { background: rgba(200, 168, 103, 0.25); }
+
+.note-list {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.note-list li {
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-sm);
+}
+
+.note-list p {
+  margin: 0 0 4px;
+}
+
+#memberNoteForm input {
+  flex: 1 1 240px;
+}
