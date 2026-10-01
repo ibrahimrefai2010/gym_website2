@@ -3231,3 +3231,9 @@ html[dir="rtl"] .hero::after {
 .ai-good { border-inline-start-color: #1f8a4c; }
 .ai-warn { border-inline-start-color: var(--color-red-strong); }
 .ai-info { border-inline-start-color: var(--color-gold); }
+
+/* ---- Admin import preview ---- */
+.import-skip td { color: #f0a3a8; }
+.import-create td:nth-child(2),
+.import-update td:nth-child(2) { color: #7fd6a1; font-weight: 700; }
+#importFile { max-width: 100%; }

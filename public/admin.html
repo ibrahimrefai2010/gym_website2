@@ -199,6 +199,27 @@
             <div class="pager" id="memberPager"></div>
           </div>
 
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.imp.title">استيراد الأعضاء</h2>
+              <div class="inline-actions">
+                <button class="btn small secondary" type="button" data-import-template="ar" data-i18n="admin.imp.templateAr">النموذج (عربي)</button>
+                <button class="btn small ghost" type="button" data-import-template="en" data-i18n="admin.imp.templateEn">النموذج (إنجليزي)</button>
+              </div>
+            </div>
+            <p class="muted" data-i18n="admin.imp.help">ارفع ملف Excel أو CSV مطابقًا للنموذج. ستظهر معاينة لكل صف قبل حفظ أي شيء، ولا تُضاف إلا الصفوف الصحيحة إلى الفرع الحالي.</p>
+            <form class="member-filter" id="importForm">
+              <input type="file" id="importFile" accept=".xlsx,.csv" required>
+              <select id="importMode" aria-label="وضع الاستيراد">
+                <option value="create" data-i18n="admin.imp.modeCreate">إضافة أعضاء جدد فقط</option>
+                <option value="update" data-i18n="admin.imp.modeUpdate">تحديث أعضاء حاليين (حسب رقم العضوية)</option>
+              </select>
+              <button class="btn small secondary" type="submit" data-i18n="admin.imp.preview">معاينة</button>
+            </form>
+            <div id="importPreview"></div>
+            <p class="form-message" id="importMessage" role="status"></p>
+          </div>
+
           <div class="admin-panel" id="memberDetail" hidden>
             <div class="admin-panel-header">
               <div class="inline-actions">
@@ -420,7 +441,10 @@
           <div class="admin-panel">
             <div class="admin-panel-header">
               <h2 data-i18n="admin.messages">الرسائل</h2>
-              <span class="badge" id="unreadBadge">0 غير مقروءة</span>
+              <div class="inline-actions">
+                <span class="badge" id="unreadBadge">0 غير مقروءة</span>
+                <button class="btn small secondary" type="button" data-export="leads" data-export-path="/api/v1/data/exports/leads" data-i18n="admin.fin.exportExcel">تصدير Excel</button>
+              </div>
             </div>
             <form class="member-filter" id="messageFilterForm">
               <select id="messageStatusFilter" name="status">
@@ -526,6 +550,7 @@
               <h2 data-i18n="admin.tasks">المهام</h2>
               <div class="inline-actions">
                 <button class="btn small secondary" type="button" id="taskMyTasksToggle" data-i18n="admin.tasks.myTasks">مهامي</button>
+                <button class="btn small secondary" type="button" data-export="tasks" data-export-path="/api/v1/data/exports/tasks" data-i18n="admin.fin.exportExcel">تصدير Excel</button>
               </div>
             </div>
             <form class="member-filter" id="taskFilterForm">
@@ -681,6 +706,9 @@
           <div class="admin-panel">
             <div class="admin-panel-header">
               <h2 data-i18n="admin.settings">الإعدادات</h2>
+              <div class="inline-actions">
+                <button class="btn small secondary" type="button" id="fullBackupButton" data-export="full-backup" data-export-path="/api/v1/data/exports/backup" data-i18n="admin.imp.backup" hidden>نسخة احتياطية كاملة (Excel)</button>
+              </div>
             </div>
             <form class="auth-form" id="settingForm" novalidate>
               <div class="form-grid">
@@ -1075,6 +1103,7 @@
               <div class="inline-actions">
                 <button class="btn small secondary" type="button" id="checkinRefresh" data-i18n="admin.checkin.refresh">تحديث</button>
                 <button class="btn small secondary" type="button" id="checkinExport" data-i18n="admin.checkin.export">تصدير CSV</button>
+                <button class="btn small secondary" type="button" data-export="attendance" data-export-path="/api/v1/data/exports/attendance" data-i18n="admin.fin.exportExcel">تصدير Excel</button>
               </div>
             </div>
             <div class="checkin-stats" id="checkinStats"></div>

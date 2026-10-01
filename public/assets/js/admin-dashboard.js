@@ -1294,7 +1294,13 @@
     document.querySelectorAll("[data-export]").forEach((button) => {
       button.addEventListener("click", async () => {
         const kind = button.dataset.export;
-        const filters = (kind === "payments" ? state.paymentFilters : kind === "invoices" ? state.invoiceFilters : state.exportFilters?.[kind]) || {};
+        const filters =
+          ({
+            payments: state.paymentFilters,
+            invoices: state.invoiceFilters,
+            leads: state.messageFilters,
+            tasks: state.taskFilters
+          })[kind] || {};
         const params = new URLSearchParams({ ...filters, lang: window.GymI18n.currentLang() });
         const path = button.dataset.exportPath || `/api/v1/${kind}/export`;
         const label = button.textContent;
@@ -2157,6 +2163,99 @@
     });
   }
 
+  // Member import (Part 2 §2.4): upload -> server preview -> explicit commit.
+  function renderImportPreview(data) {
+    const actionLabel = (action) => t(`admin.imp.action.${action}`);
+    const rows = data.rows
+      .map(
+        (row) => `
+          <tr class="import-${escapeHtml(row.action)}">
+            <td>${escapeHtml(row.row)}</td>
+            <td>${escapeHtml(actionLabel(row.action))}</td>
+            <td>${escapeHtml(row.data.fullName || "")}${row.data.memberCode ? `<br><small class="muted">${escapeHtml(row.data.memberCode)}</small>` : ""}</td>
+            <td>${escapeHtml(row.data.email || "")}<br><small class="muted">${escapeHtml(row.data.phone || "")}</small></td>
+            <td>${
+              row.reasons?.length
+                ? escapeHtml(row.reasons.join("; "))
+                : row.changes?.length
+                  ? row.changes.map((key) => `${escapeHtml(key)}: ${escapeHtml(row.before?.[key] ?? "")} → ${escapeHtml(row.data[{ full_name: "fullName", email: "email", phone: "phone" }[key]] ?? "")}`).join("<br>")
+                  : row.data.plan
+                    ? escapeHtml(`${row.data.plan} → ${row.data.membershipEnd || ""}`)
+                    : ""
+            }</td>
+          </tr>`
+      )
+      .join("");
+    const c = data.counts;
+    const valid = c.create + c.update;
+    setHtml(
+      "#importPreview",
+      `<p class="fin-summary">${escapeHtml(
+        t("admin.imp.summary").replace("{create}", c.create).replace("{update}", c.update).replace("{skip}", c.skip + c.unchanged).replace("{total}", c.total)
+      )}</p>
+      <div class="table-shell"><table class="table"><thead><tr>
+        <th>#</th><th>${escapeHtml(t("admin.imp.colAction"))}</th><th>${escapeHtml(t("table.member"))}</th><th>${escapeHtml(t("admin.imp.colContact"))}</th><th>${escapeHtml(t("admin.imp.colDetails"))}</th>
+      </tr></thead><tbody>${rows}</tbody></table></div>
+      ${valid ? `<button class="btn" type="button" id="importCommit" data-job-id="${escapeHtml(data.jobId)}" data-count="${valid}">${escapeHtml(t("admin.imp.commit").replace("{n}", valid))}</button>` : `<p class="muted">${escapeHtml(t("admin.imp.nothing"))}</p>`}`
+    );
+  }
+
+  function setupImports() {
+    document.querySelectorAll("[data-import-template]").forEach((button) => {
+      button.addEventListener("click", () =>
+        window.GymApi.download(`/api/v1/data/imports/members/template?lang=${button.dataset.importTemplate}`, "members-import-template.xlsx").catch((error) => setMessage("#importMessage", error.message, false))
+      );
+    });
+    document.querySelector("#importForm")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const file = document.querySelector("#importFile")?.files?.[0];
+      if (!file) return;
+      if (file.size > 2 * 1024 * 1024) {
+        setMessage("#importMessage", t("admin.imp.tooBig"), false);
+        return;
+      }
+      const submit = event.currentTarget.querySelector('button[type="submit"]');
+      submit.disabled = true;
+      setMessage("#importMessage", t("admin.imp.checking"), true);
+      setHtml("#importPreview", "");
+      try {
+        const dataUrl = await fileToDataUrl(file);
+        const data = await window.GymApi.request("/api/v1/data/imports/members/preview", {
+          method: "POST",
+          body: JSON.stringify({ dataUrl, fileName: file.name, mode: document.querySelector("#importMode")?.value || "create" })
+        });
+        renderImportPreview(data);
+        setMessage("#importMessage", "", true);
+      } catch (error) {
+        setMessage("#importMessage", error.message, false);
+      } finally {
+        submit.disabled = false;
+      }
+    });
+    document.querySelector("#importPreview")?.addEventListener("click", async (event) => {
+      const button = event.target.closest("#importCommit");
+      if (!button || button.disabled) return;
+      if (!window.confirm(t("admin.imp.confirm").replace("{n}", button.dataset.count).replace("{branch}", branchSuffix()))) return;
+      button.disabled = true;
+      try {
+        const result = await window.GymApi.request(`/api/v1/data/imports/members/${encodeURIComponent(button.dataset.jobId)}/commit`, { method: "POST", body: "{}" });
+        setHtml("#importPreview", "");
+        setMessage(
+          "#importMessage",
+          t("admin.imp.done").replace("{n}", result.committed) + (result.skipped.length ? ` ${t("admin.imp.doneSkipped").replace("{n}", result.skipped.length)}` : ""),
+          true
+        );
+        document.querySelector("#importForm")?.reset();
+        loadMembers(1);
+      } catch (error) {
+        button.disabled = false;
+        setMessage("#importMessage", error.message, false);
+      }
+    });
+    const backup = document.querySelector("#fullBackupButton");
+    if (backup) backup.hidden = state.me?.role !== "super_admin";
+  }
+
   // Leads/CRM (Part 2): same on-demand, filtered + paginated pattern as
   // loadTasks above (replaces the old one-shot /api/v1/messages fetch inside
   // load()'s Promise.all, which returned a flat, unfiltered array of up to
@@ -2776,6 +2875,8 @@
       loadTasks(1);
       loadCheckin();
       loadAiStatus();
+      const backupButton = document.querySelector("#fullBackupButton");
+      if (backupButton) backupButton.hidden = state.me?.role !== "super_admin";
       loadPayments(1);
       loadInvoices(1);
       // Leads/CRM (Part 2): loaded the same on-demand way as tasks -- see
@@ -3767,6 +3868,7 @@
     setupCoaches();
     setupMemberActions();
     setupAiAssistant();
+    setupImports();
     setupSession();
     setupBranchSwitcher();
     load();
