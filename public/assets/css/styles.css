@@ -2750,3 +2750,128 @@ html[dir="rtl"] .hero::after {
   font-size: 13px;
   color: var(--color-muted);
 }
+
+/* ---- Admin reception check-in ---- */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.checkin-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.checkin-form input {
+  flex: 1 1 260px;
+  min-height: 52px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-white);
+  font: inherit;
+  font-size: 18px;
+}
+
+.checkin-result {
+  display: grid;
+  gap: 6px;
+  margin-block-start: 16px;
+  padding: 22px;
+  border-radius: var(--radius-sm);
+  border-inline-start: 6px solid transparent;
+  font-size: 16px;
+}
+
+.checkin-result strong {
+  font-size: 26px;
+}
+
+.checkin-result.is-allowed {
+  background: rgba(31, 138, 76, 0.22);
+  border-inline-start-color: #1f8a4c;
+}
+
+.checkin-result.is-denied {
+  background: rgba(181, 18, 29, 0.24);
+  border-inline-start-color: var(--color-red-strong);
+}
+
+.checkin-station:fullscreen {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 6vh 8vw;
+  background: var(--color-black);
+  color: var(--color-white);
+  overflow: auto;
+}
+
+.checkin-station:fullscreen .checkin-form input {
+  min-height: 72px;
+  font-size: 26px;
+}
+
+.checkin-station:fullscreen .checkin-result {
+  padding: 48px;
+  font-size: 24px;
+}
+
+.checkin-station:fullscreen .checkin-result strong {
+  font-size: 48px;
+}
+
+.checkin-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-block-end: 14px;
+}
+
+.checkin-stat {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-sm);
+}
+
+.checkin-stat strong {
+  font-size: 24px;
+  color: var(--color-gold);
+}
+
+.checkin-heatmap {
+  overflow-x: auto;
+}
+
+.heatmap-table {
+  border-collapse: separate;
+  border-spacing: 2px;
+  font-size: 11px;
+}
+
+.heatmap-table th {
+  padding: 2px 6px;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.heatmap-table td {
+  min-width: 26px;
+  height: 26px;
+  text-align: center;
+  border-radius: 3px;
+  background: rgba(200, 168, 103, var(--heat, 0));
+  outline: 1px solid rgba(255, 255, 255, 0.06);
+}

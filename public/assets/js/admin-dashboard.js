@@ -840,6 +840,247 @@
     renderTasks();
   }
 
+  // Reception check-in (Part 2). The station sends whatever was scanned or
+  // typed; the server decides whether it is a card QR token or a manual
+  // member code/phone/email lookup (see checkinService.resolveMember), and
+  // always scopes to the current branch server-side.
+  const CARD_TOKEN_PATTERN = /^[a-f0-9]{32}$|[?&]t=[a-f0-9]{32}/i;
+  let checkinResultTimer = null;
+
+  function formatTime(value) {
+    if (!value) {
+      return "—";
+    }
+    return new Intl.DateTimeFormat(window.GymI18n.currentLang() === "ar" ? "ar-SA" : "en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "Asia/Riyadh"
+    }).format(new Date(value));
+  }
+
+  function checkinMethodLabel(method) {
+    return method === "qr" ? t("admin.checkin.methodQr") : t("admin.checkin.methodManual");
+  }
+
+  function showCheckinResult(result) {
+    const node = document.querySelector("#checkinResult");
+    if (!node) {
+      return;
+    }
+    clearTimeout(checkinResultTimer);
+    if (result.allowed) {
+      const plan = result.membership?.plan ? localize(result.membership.plan) : "";
+      const until = result.membership?.endDate
+        ? t("admin.checkin.validUntil").replace("{date}", formatDate(result.membership.endDate))
+        : "";
+      node.className = "checkin-result is-allowed";
+      node.innerHTML = `
+        <strong>${escapeHtml(t("admin.checkin.welcome").replace("{name}", result.member?.fullName || ""))}</strong>
+        <span>${escapeHtml([result.member?.memberCode, plan, until].filter(Boolean).join(" · "))}</span>
+        ${result.duplicate ? `<span>${escapeHtml(t("admin.checkin.already"))}</span>` : ""}
+      `;
+    } else {
+      node.className = "checkin-result is-denied";
+      node.innerHTML = `
+        <strong>${escapeHtml(t("admin.checkin.denied"))}</strong>
+        <span>${escapeHtml(t(`admin.checkin.reason.${result.reason}`))}</span>
+        ${result.member?.fullName ? `<span>${escapeHtml([result.member.fullName, result.member.memberCode].filter(Boolean).join(" · "))}</span>` : ""}
+      `;
+    }
+    node.hidden = false;
+    checkinResultTimer = setTimeout(() => {
+      node.hidden = true;
+    }, 8000);
+  }
+
+  function renderCheckin() {
+    const data = state.checkin;
+    if (!data) {
+      return;
+    }
+    const summary = data.summary || { today: 0, week: 0, month: 0 };
+    setHtml(
+      "#checkinStats",
+      [
+        ["admin.checkin.statToday", summary.today],
+        ["admin.checkin.statWeek", summary.week],
+        ["admin.checkin.statMonth", summary.month]
+      ]
+        .map(([key, value]) => `<div class="checkin-stat"><span>${escapeHtml(t(key))}</span><strong>${escapeHtml(value)}</strong></div>`)
+        .join("")
+    );
+
+    const log = data.log || [];
+    setHtml(
+      "#checkinRows",
+      log.length
+        ? log
+            .map(
+              (row) => `
+                <tr>
+                  <td>${escapeHtml(row.customer)}</td>
+                  <td>${escapeHtml(row.member_code || "—")}</td>
+                  <td>${escapeHtml(formatTime(row.check_in_at))}</td>
+                  <td>${escapeHtml(formatTime(row.check_out_at))}</td>
+                  <td>${escapeHtml(checkinMethodLabel(row.method))}</td>
+                  <td>${
+                    row.status === "checked_in"
+                      ? `<button class="btn small secondary" type="button" data-checkout-id="${escapeHtml(row.id)}" data-checkout-name="${escapeHtml(row.customer)}">${escapeHtml(t("admin.checkin.checkOut"))}</button>`
+                      : ""
+                  }</td>
+                </tr>
+              `
+            )
+            .join("")
+        : `<tr><td colspan="6">${escapeHtml(t("admin.checkin.none"))}</td></tr>`
+    );
+
+    renderCheckinHeatmap(data.heatmap || []);
+  }
+
+  function renderCheckinHeatmap(cells) {
+    if (!cells.length) {
+      setHtml("#checkinHeatmap", `<p class="muted">${escapeHtml(t("admin.checkin.heatmapEmpty"))}</p>`);
+      return;
+    }
+    const counts = new Map(cells.map((cell) => [`${cell.day_of_week}-${cell.hour_of_day}`, Number(cell.total)]));
+    const max = Math.max(...counts.values(), 1);
+    const dayFormat = new Intl.DateTimeFormat(window.GymI18n.currentLang() === "ar" ? "ar-SA" : "en-US", {
+      weekday: "short",
+      timeZone: "UTC"
+    });
+    // 2024-01-07 is a Sunday = MySQL DAYOFWEEK() 1.
+    const dayName = (dow) => dayFormat.format(new Date(Date.UTC(2024, 0, 6 + dow)));
+    const hours = Array.from({ length: 24 }, (_, hour) => hour);
+    const header = `<tr><th></th>${hours.map((hour) => `<th scope="col">${hour}</th>`).join("")}</tr>`;
+    const body = [1, 2, 3, 4, 5, 6, 7]
+      .map((dow) => {
+        const row = hours
+          .map((hour) => {
+            const value = counts.get(`${dow}-${hour}`) || 0;
+            const level = value ? Math.max(0.12, value / max) : 0;
+            return `<td style="--heat:${level.toFixed(2)}" title="${escapeHtml(`${dayName(dow)} ${hour}:00 — ${value}`)}">${value || ""}</td>`;
+          })
+          .join("");
+        return `<tr><th scope="row">${escapeHtml(dayName(dow))}</th>${row}</tr>`;
+      })
+      .join("");
+    setHtml("#checkinHeatmap", `<table class="heatmap-table">${header}${body}</table>`);
+  }
+
+  async function loadCheckin() {
+    try {
+      const [log, summary, heatmap] = await Promise.all([
+        window.GymApi.request("/api/v1/attendance/daily-log"),
+        window.GymApi.request("/api/v1/attendance/summary"),
+        window.GymApi.request("/api/v1/attendance/heatmap")
+      ]);
+      state.checkin = { log, summary, heatmap };
+    } catch (_error) {
+      // No checkin:manage / attendance:manage permission -- leave the section empty.
+      state.checkin = null;
+    }
+    renderCheckin();
+  }
+
+  function exportCheckinCsv() {
+    const log = state.checkin?.log || [];
+    const header = [t("table.member"), t("admin.checkin.memberCode"), t("admin.checkin.checkInAt"), t("admin.checkin.checkOutAt"), t("admin.checkin.method")];
+    const rows = log.map((row) => [row.customer, row.member_code || "", row.check_in_at || "", row.check_out_at || "", row.method]);
+    const csv = [header, ...rows]
+      .map((cells) => cells.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
+      .join("\r\n");
+    // BOM so Excel opens Arabic names correctly.
+    const blob = new Blob(["﻿", csv], { type: "text/csv;charset=utf-8" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `check-ins-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+
+  function setupCheckin() {
+    const form = document.querySelector("#checkinForm");
+    const input = document.querySelector("#checkinInput");
+    const submit = document.querySelector("#checkinSubmit");
+
+    form?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const value = input.value.trim();
+      if (!value || submit.disabled) {
+        return;
+      }
+      const isCard = CARD_TOKEN_PATTERN.test(value);
+      submit.disabled = true;
+      submit.textContent = t("admin.checkin.checking");
+      setMessage("#checkinMessage", "", true);
+      try {
+        const result = await window.GymApi.request("/api/v1/attendance/check-in", {
+          method: "POST",
+          body: JSON.stringify(isCard ? { code: value, method: "qr" } : { query: value, method: "manual" })
+        });
+        showCheckinResult(result);
+        if (result.allowed && !result.duplicate) {
+          loadCheckin();
+        }
+      } catch (error) {
+        setMessage("#checkinMessage", error.message || t("admin.checkin.error"), false);
+      } finally {
+        submit.disabled = false;
+        submit.textContent = t("admin.checkin.submit");
+        input.value = "";
+        input.focus();
+      }
+    });
+
+    document.querySelector("#checkinFullscreen")?.addEventListener("click", () => {
+      const station = document.querySelector("#checkinStation");
+      if (document.fullscreenElement) {
+        document.exitFullscreen?.();
+      } else {
+        station?.requestFullscreen?.().then(() => input?.focus());
+      }
+    });
+    document.addEventListener("fullscreenchange", () => {
+      const button = document.querySelector("#checkinFullscreen");
+      if (button) {
+        button.textContent = t(document.fullscreenElement ? "admin.checkin.exitFullscreen" : "admin.checkin.fullscreen");
+      }
+    });
+
+    document.querySelector("#checkinRefresh")?.addEventListener("click", () => loadCheckin());
+    document.querySelector("#checkinExport")?.addEventListener("click", exportCheckinCsv);
+
+    document.querySelector("#checkinRows")?.addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-checkout-id]");
+      if (!button || button.disabled) {
+        return;
+      }
+      const branch = currentBranchLabel();
+      const prompt = t("admin.checkin.confirmCheckOut")
+        .replace("{name}", button.dataset.checkoutName || "")
+        .replace("{branch}", branch ? localize(branch.name) : "");
+      if (!window.confirm(prompt)) {
+        return;
+      }
+      button.disabled = true;
+      try {
+        await window.GymApi.request(`/api/v1/attendance/${encodeURIComponent(button.dataset.checkoutId)}/check-out`, { method: "PATCH" });
+        await loadCheckin();
+      } catch (error) {
+        button.disabled = false;
+        setMessage("#checkinMessage", error.message || t("admin.checkin.error"), false);
+      }
+    });
+
+    // Focus the scan field whenever the reception tab is opened, so a
+    // handheld scanner (keyboard wedge: types the code + Enter) works at once.
+    document.querySelector('[data-admin-tab="checkin"]')?.addEventListener("click", () => {
+      setTimeout(() => input?.focus(), 0);
+    });
+  }
+
+
   // Leads/CRM (Part 2): same on-demand, filtered + paginated pattern as
   // loadTasks above (replaces the old one-shot /api/v1/messages fetch inside
   // load()'s Promise.all, which returned a flat, unfiltered array of up to
@@ -1448,6 +1689,7 @@
     renderTaskAssigneeOptions();
     renderLeadAssigneeOptions();
     renderTasks();
+    renderCheckin();
     renderRbac();
     renderAiAssistant();
     renderLogs();
@@ -1476,10 +1718,12 @@
         window.GymApi.request("/api/v1/admin/overview"),
         window.GymApi.bootstrap(),
         window.GymApi.request("/api/v1/admin/plans"),
-        window.GymApi.request("/api/v1/admin/offers"),
-        window.GymApi.request("/api/v1/admin/siteImages"),
-        window.GymApi.request("/api/v1/admin/slides"),
-        window.GymApi.request("/api/v1/admin/rbac"),
+        // Permission-gated: a 403 here (e.g. a Reception-only admin) must not
+        // be treated as a dead session -- fall back to public data instead.
+        window.GymApi.request("/api/v1/admin/offers").catch(() => null),
+        window.GymApi.request("/api/v1/admin/siteImages").catch(() => null),
+        window.GymApi.request("/api/v1/admin/slides").catch(() => null),
+        window.GymApi.request("/api/v1/admin/rbac").catch(() => null),
         window.GymApi.request("/api/v1/reports/summary").catch(() => null),
         window.GymApi.request("/api/v1/admin/notificationBroadcasts").catch(() => [])
       ]);
@@ -1490,7 +1734,7 @@
       state.offers = offers || publicData.offers || [];
       state.siteImages = siteImagesData || publicData.siteImages || null;
       state.slides = slides || publicData.slides || [];
-      state.rbac = rbac;
+      state.rbac = rbac || { roles: [], permissions: [], assignments: [] };
       state.reportSummary = reportSummary;
       if (state.selectedRoleKey && !state.rbac.roles?.some((role) => role.key === state.selectedRoleKey)) {
         state.selectedRoleKey = null;
@@ -1499,6 +1743,7 @@
       renderAll();
       loadMembers(1);
       loadTasks(1);
+      loadCheckin();
       // Leads/CRM (Part 2): loaded the same on-demand way as tasks -- see
       // loadMessages's own comment for why this moved out of the Promise.all
       // above.
@@ -2470,6 +2715,7 @@
     setupAnnounce();
     setupMembers();
     setupTasks();
+    setupCheckin();
     setupSession();
     setupBranchSwitcher();
     load();

@@ -37,6 +37,7 @@
           <button type="button" data-admin-tab="contact" data-i18n="admin.contactInfo">معلومات التواصل</button>
           <button type="button" data-admin-tab="messages" data-i18n="admin.messages">الرسائل</button>
           <button type="button" data-admin-tab="tasks" data-i18n="admin.tasks">المهام</button>
+          <button type="button" data-admin-tab="checkin" data-i18n="admin.checkin">الاستقبال وتسجيل الدخول</button>
           <button type="button" data-admin-tab="announce" data-i18n="admin.announce">الإشعارات والإعلانات</button>
           <button type="button" data-admin-tab="settings" data-i18n="admin.settings">الإعدادات</button>
           <button type="button" data-admin-tab="payments" data-i18n="admin.payments">المدفوعات</button>
@@ -796,6 +797,57 @@
                 <tbody id="aiRecommendationRows"></tbody>
               </table>
             </div>
+          </div>
+        </section>
+
+        <section class="admin-section" data-admin-section="checkin">
+          <div class="admin-panel checkin-station" id="checkinStation">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.checkin.stationTitle">تسجيل دخول الأعضاء</h2>
+              <div class="inline-actions">
+                <button class="btn small secondary" type="button" id="checkinFullscreen" data-i18n="admin.checkin.fullscreen">وضع الاستقبال</button>
+              </div>
+            </div>
+            <form class="checkin-form" id="checkinForm" autocomplete="off">
+              <label class="sr-only" for="checkinInput" data-i18n="admin.checkin.inputLabel">امسح رمز QR أو أدخل رقم العضوية أو الجوال أو البريد</label>
+              <input type="text" id="checkinInput" name="code" required data-i18n-placeholder="admin.checkin.inputLabel" placeholder="امسح رمز QR أو أدخل رقم العضوية أو الجوال أو البريد">
+              <button class="btn" type="submit" id="checkinSubmit" data-i18n="admin.checkin.submit">تسجيل الدخول</button>
+            </form>
+            <div class="checkin-result" id="checkinResult" role="status" aria-live="assertive" hidden></div>
+          </div>
+
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.checkin.todayTitle">سجل اليوم</h2>
+              <div class="inline-actions">
+                <button class="btn small secondary" type="button" id="checkinRefresh" data-i18n="admin.checkin.refresh">تحديث</button>
+                <button class="btn small secondary" type="button" id="checkinExport" data-i18n="admin.checkin.export">تصدير CSV</button>
+              </div>
+            </div>
+            <div class="checkin-stats" id="checkinStats"></div>
+            <div class="table-shell">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th data-i18n="table.member">العضو</th>
+                    <th data-i18n="admin.checkin.memberCode">رقم العضوية</th>
+                    <th data-i18n="admin.checkin.checkInAt">وقت الدخول</th>
+                    <th data-i18n="admin.checkin.checkOutAt">وقت الخروج</th>
+                    <th data-i18n="admin.checkin.method">الطريقة</th>
+                    <th data-i18n="admin.tasks.actionsCol">الإجراءات</th>
+                  </tr>
+                </thead>
+                <tbody id="checkinRows"></tbody>
+              </table>
+            </div>
+            <p class="form-message" id="checkinMessage" role="status"></p>
+          </div>
+
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.checkin.heatmapTitle">أوقات الذروة (آخر 90 يومًا)</h2>
+            </div>
+            <div class="checkin-heatmap" id="checkinHeatmap"></div>
           </div>
         </section>
 
