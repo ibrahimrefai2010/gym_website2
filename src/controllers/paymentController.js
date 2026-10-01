@@ -1,53 +1,53 @@
 const paymentService = require("../services/paymentService");
 const paymentRepository = require("../repositories/paymentRepository");
-const publicRepository = require("../repositories/publicRepository");
 const userRepository = require("../repositories/userRepository");
 const { assertBranchOwnership } = require("../security/branchAccess");
 const { createHttpError } = require("../utils/httpError");
 
-async function createCheckout(req, res) {
-  const [publicData, user] = await Promise.all([
-    publicRepository.getBootstrap(),
-    userRepository.findById(req.user.id)
-  ]);
-
-  const plan = publicData.plans.find((item) => String(item.id) === String(req.body.planId));
-  if (!plan) {
-    throw createHttpError(404, "Plan not found.", "PLAN_NOT_FOUND");
-  }
-
-  const result = await paymentService.createCheckoutSession({
-    user,
-    plan,
-    provider: req.body.provider || "stripe"
-  });
-
-  res.json({ success: true, data: result });
+function requestOrigin(req) {
+  return `${req.protocol}://${req.get("host")}`;
 }
 
-async function createIntent(req, res) {
-  const [publicData, user] = await Promise.all([
-    publicRepository.getBootstrap(),
-    userRepository.findById(req.user.id)
-  ]);
-  const plan = publicData.plans.find((item) => String(item.id) === String(req.body.planId));
-  if (!plan) {
-    throw createHttpError(404, "Plan not found.", "PLAN_NOT_FOUND");
+// Member starts (or resumes) an online checkout for one of their own
+// branch's plans. Plan/branch validation and everything else happens in
+// paymentService.startMoyasarCheckout -- the plan id is the only client input.
+async function createCheckout(req, res) {
+  if (req.user?.type !== "user") {
+    throw createHttpError(403, "Only members can start a checkout.", "CHECKOUT_MEMBERS_ONLY");
   }
-
-  const data = await paymentService.createIntent({
-    user,
-    plan,
-    provider: req.body.provider || "stripe"
+  if (!req.body?.planId) {
+    throw createHttpError(422, "Choose a plan first.", "PLAN_REQUIRED");
+  }
+  if (req.body.provider === "stripe") {
+    throw createHttpError(410, "This payment method is no longer available.", "PROVIDER_RETIRED");
+  }
+  const data = await paymentService.startMoyasarCheckout({
+    userId: req.user.id,
+    planId: req.body.planId,
+    origin: requestOrigin(req)
   });
   res.status(201).json({ success: true, data });
 }
 
+// Kept for older clients; same as /checkout.
+const createIntent = createCheckout;
+
 async function webhook(req, res) {
-  const data = await paymentService.verifyWebhook(req.params.provider || req.body?.provider || "stripe", {
-    rawBody: Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body || {})),
+  const provider = req.params.provider || "moyasar";
+  const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body || {}));
+  if (provider === "moyasar") {
+    const data = await paymentService.handleMoyasarWebhook(rawBody);
+    return res.json({ success: true, data });
+  }
+  const data = await paymentService.verifyWebhook(provider, {
+    rawBody,
     signature: req.get("stripe-signature") || ""
   });
+  return res.json({ success: true, data });
+}
+
+async function status(req, res) {
+  const data = await paymentService.memberPaymentStatus(req.user.id, req.params.id);
   res.json({ success: true, data });
 }
 
@@ -71,5 +71,6 @@ module.exports = {
   createCheckout,
   createIntent,
   history,
+  status,
   webhook
 };

@@ -10,6 +10,7 @@ router.post("/webhook/:provider?", asyncHandler(paymentController.webhook));
 router.post("/checkout", authenticate, asyncHandler(paymentController.createCheckout));
 router.post("/create-intent", authenticate, asyncHandler(paymentController.createIntent));
 router.get("/history", authenticate, asyncHandler(paymentController.history));
+router.get("/:id(\\d+)/status", authenticate, asyncHandler(paymentController.status));
 router.patch(
   "/:id/complete",
   authenticate,

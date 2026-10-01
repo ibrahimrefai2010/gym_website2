@@ -112,6 +112,26 @@ function lineTotals(item) {
   if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) {
     throw createHttpError(422, "Invoice item tax rate is invalid.", "INVOICE_ITEM_TAX_INVALID");
   }
+  // taxInclusive: unitPrice is the VAT-inclusive consumer price (how plan
+  // prices are displayed and charged). Back the VAT out so the line total
+  // equals exactly what the member paid: net = round(gross / (1 + rate)),
+  // vat = gross - net. Stored unit_price is the net unit price.
+  if (item.taxInclusive) {
+    if (discount > 0) {
+      throw createHttpError(422, "Discounts are not supported on VAT-inclusive lines.", "INVOICE_ITEM_DISCOUNT_INVALID");
+    }
+    const gross = round2(quantity * unitPrice);
+    const net = round2(gross / (1 + taxRate / 100));
+    return {
+      quantity,
+      unitPrice: round2(net / quantity),
+      discount: 0,
+      taxRate,
+      taxAmount: round2(gross - net),
+      lineTotal: gross,
+      net
+    };
+  }
   const taxable = Math.max(quantity * unitPrice - discount, 0);
   const taxAmount = Number(((taxable * taxRate) / 100).toFixed(2));
   return {
@@ -120,7 +140,8 @@ function lineTotals(item) {
     discount,
     taxRate,
     taxAmount,
-    lineTotal: Number((taxable + taxAmount).toFixed(2))
+    lineTotal: Number((taxable + taxAmount).toFixed(2)),
+    net: round2(quantity * unitPrice)
   };
 }
 
@@ -203,7 +224,12 @@ async function getInvoice(id) {
   return invoiceRows[0] ? { invoice: invoiceRows[0], items } : null;
 }
 
-async function createInvoice(payload, adminId = null) {
+// Validates and computes everything that does not need the invoice-number
+// lock (totals, seller VAT identity, ZATCA QR, buyer). Split from the insert
+// so a caller that already holds a transaction (paymentService's Moyasar
+// finalizer: payment + membership + invoice must commit together) can run
+// insertPreparedInvoice on its own connection.
+async function prepareInvoice(payload) {
   ensureDatabase();
   const items = Array.isArray(payload.items) ? payload.items : [];
   if (items.length === 0) {
@@ -214,7 +240,7 @@ async function createInvoice(payload, adminId = null) {
   }
 
   const prepared = items.map((item) => ({ ...item, totals: lineTotals(item) }));
-  const subtotal = round2(prepared.reduce((sum, item) => sum + item.totals.quantity * item.totals.unitPrice, 0));
+  const subtotal = round2(prepared.reduce((sum, item) => sum + item.totals.net, 0));
   const discountTotal = round2(prepared.reduce((sum, item) => sum + item.totals.discount, 0));
   const taxTotal = round2(prepared.reduce((sum, item) => sum + item.totals.taxAmount, 0));
   const total = round2(prepared.reduce((sum, item) => sum + item.totals.lineTotal, 0));
@@ -246,72 +272,83 @@ async function createInvoice(payload, adminId = null) {
 
   const buyer = await resolveBuyer(payload);
 
-  return transaction(async (connection) => {
-    const allocated = payload.invoiceNumber
-      ? { number: payload.invoiceNumber, year: null, seq: null }
-      : await allocateInvoiceNumber(connection, issuedAt, branchId);
+  return { payload, prepared, subtotal, discountTotal, taxTotal, total, paidTotal, balanceDue, status, issuedAt, issueDate, branchId, zatcaQr, buyer };
+}
 
-    const [result] = await connection.execute(
-      `INSERT INTO invoices
-        (branch_id, user_id, membership_id, invoice_number, status, issue_date, issued_at,
-         hijri_year, invoice_seq, due_date,
-         subtotal, discount_total, tax_total, total, paid_total, balance_due, currency,
-         buyer_name, buyer_phone, buyer_vat_number, zatca_qr,
-         notes, metadata, created_by, updated_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+// Allocates the gap-free number and inserts the invoice + items on the
+// caller's connection (must be inside a transaction -- a rollback also
+// releases the number).
+async function insertPreparedInvoice(connection, invoice, adminId = null) {
+  const { payload, prepared, subtotal, discountTotal, taxTotal, total, paidTotal, balanceDue, status, issuedAt, issueDate, branchId, zatcaQr, buyer } = invoice;
+  const allocated = payload.invoiceNumber
+    ? { number: payload.invoiceNumber, year: null, seq: null }
+    : await allocateInvoiceNumber(connection, issuedAt, branchId);
+
+  const [result] = await connection.execute(
+    `INSERT INTO invoices
+      (branch_id, user_id, membership_id, invoice_number, status, issue_date, issued_at,
+       hijri_year, invoice_seq, due_date,
+       subtotal, discount_total, tax_total, total, paid_total, balance_due, currency,
+       buyer_name, buyer_phone, buyer_vat_number, zatca_qr,
+       notes, metadata, created_by, updated_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      branchId,
+      payload.userId,
+      payload.membershipId || null,
+      allocated.number,
+      status,
+      issueDate,
+      issuedAt.toISOString().slice(0, 19).replace("T", " "),
+      allocated.year,
+      allocated.seq,
+      payload.dueDate || null,
+      subtotal,
+      discountTotal,
+      taxTotal,
+      total,
+      paidTotal,
+      balanceDue,
+      payload.currency || "SAR",
+      buyer.name,
+      buyer.phone,
+      buyer.vatNumber,
+      zatcaQr,
+      payload.notes || null,
+      payload.metadata ? JSON.stringify(payload.metadata) : null,
+      adminId,
+      adminId
+    ]
+  );
+
+  for (const item of prepared) {
+    await connection.execute(
+      `INSERT INTO invoice_items
+        (invoice_id, plan_id, item_type, description, quantity, unit_price, discount,
+         tax_rate, tax_amount, line_total, created_by, updated_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        branchId,
-        payload.userId,
-        payload.membershipId || null,
-        allocated.number,
-        status,
-        issueDate,
-        issuedAt.toISOString().slice(0, 19).replace("T", " "),
-        allocated.year,
-        allocated.seq,
-        payload.dueDate || null,
-        subtotal,
-        discountTotal,
-        taxTotal,
-        total,
-        paidTotal,
-        balanceDue,
-        payload.currency || "SAR",
-        buyer.name,
-        buyer.phone,
-        buyer.vatNumber,
-        zatcaQr,
-        payload.notes || null,
-        payload.metadata ? JSON.stringify(payload.metadata) : null,
+        result.insertId,
+        item.planId || null,
+        item.itemType || "other",
+        item.description,
+        item.totals.quantity,
+        item.totals.unitPrice,
+        item.totals.discount,
+        item.totals.taxRate,
+        item.totals.taxAmount,
+        item.totals.lineTotal,
         adminId,
         adminId
       ]
     );
+  }
+  return { id: result.insertId, invoiceNumber: allocated.number, total, taxTotal };
+}
 
-    for (const item of prepared) {
-      await connection.execute(
-        `INSERT INTO invoice_items
-          (invoice_id, plan_id, item_type, description, quantity, unit_price, discount,
-           tax_rate, tax_amount, line_total, created_by, updated_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          result.insertId,
-          item.planId || null,
-          item.itemType || "other",
-          item.description,
-          item.totals.quantity,
-          item.totals.unitPrice,
-          item.totals.discount,
-          item.totals.taxRate,
-          item.totals.taxAmount,
-          item.totals.lineTotal,
-          adminId,
-          adminId
-        ]
-      );
-    }
-    return { id: result.insertId, invoiceNumber: allocated.number };
-  });
+async function createInvoice(payload, adminId = null) {
+  const invoice = await prepareInvoice(payload);
+  return transaction((connection) => insertPreparedInvoice(connection, invoice, adminId));
 }
 
 async function markPdfGenerated(id) {
@@ -364,6 +401,8 @@ async function updateInvoiceStatus(id, status, adminId = null) {
 }
 
 module.exports = {
+  insertPreparedInvoice,
+  prepareInvoice,
   createInvoice,
   getInvoice,
   listInvoices,

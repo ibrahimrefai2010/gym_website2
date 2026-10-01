@@ -201,57 +201,107 @@ async function activationDates(connection, membershipId, userId, planId) {
   return { startDate, endDate };
 }
 
+// Activation on a caller-supplied connection, so a payment finalizer can
+// commit payment + membership + invoice atomically. Locks the membership row.
+async function activateOnConnection(connection, membershipId, adminId) {
+  const [rows] = await connection.execute(
+    `SELECT id, user_id, plan_id, status
+     FROM memberships
+     WHERE id = ?
+     LIMIT 1
+     FOR UPDATE`,
+    [membershipId]
+  );
+  const membership = rows[0];
+  if (!membership) {
+    throw createHttpError(404, "Membership not found.", "MEMBERSHIP_NOT_FOUND");
+  }
+  if (membership.status === "cancelled" || membership.status === "expired") {
+    throw createHttpError(409, "This membership cannot be activated.", "MEMBERSHIP_NOT_ACTIVATABLE");
+  }
+
+  const [activeRows] = await connection.execute(
+    "SELECT id FROM memberships WHERE user_id = ? AND status = 'active' AND id <> ? LIMIT 1",
+    [membership.user_id, membership.id]
+  );
+  if (activeRows[0]) {
+    throw createHttpError(409, "User already has an active membership.", "ACTIVE_MEMBERSHIP_EXISTS");
+  }
+
+  const { startDate, endDate } = await activationDates(connection, membership.id, membership.user_id, membership.plan_id);
+  await connection.execute(
+    `UPDATE memberships
+     SET status = 'active', start_date = ?, end_date = ?, activated_by = ?, updated_at = UTC_TIMESTAMP()
+     WHERE id = ?`,
+    [startDate, endDate, adminId || null, membership.id]
+  );
+
+  await connection
+    .execute(
+      `INSERT INTO notifications (user_id, type, title_ar, title_en, body_ar, body_en)
+       VALUES (?, 'membership_activated', ?, ?, ?, ?)`,
+      [
+        membership.user_id,
+        "تم تفعيل عضويتك",
+        "Your membership is active",
+        `عضويتك مفعّلة حتى ${endDate}.`,
+        `Your membership is active until ${endDate}.`
+      ]
+    )
+    .catch(() => {});
+
+  return { id: membership.id, status: "active", startDate, endDate };
+}
+
 async function activateMembership(membershipId, adminId) {
   ensureDatabase();
-  return transaction(async (connection) => {
-    const [rows] = await connection.execute(
-      `SELECT id, user_id, plan_id, status
-       FROM memberships
-       WHERE id = ?
-       LIMIT 1
-       FOR UPDATE`,
-      [membershipId]
-    );
-    const membership = rows[0];
-    if (!membership) {
-      throw createHttpError(404, "Membership not found.", "MEMBERSHIP_NOT_FOUND");
-    }
-    if (membership.status === "cancelled" || membership.status === "expired") {
-      throw createHttpError(409, "This membership cannot be activated.", "MEMBERSHIP_NOT_ACTIVATABLE");
-    }
+  return transaction((connection) => activateOnConnection(connection, membershipId, adminId));
+}
 
-    const [activeRows] = await connection.execute(
-      "SELECT id FROM memberships WHERE user_id = ? AND status = 'active' AND id <> ? LIMIT 1",
-      [membership.user_id, membership.id]
-    );
-    if (activeRows[0]) {
-      throw createHttpError(409, "User already has an active membership.", "ACTIVE_MEMBERSHIP_EXISTS");
-    }
-
-    const { startDate, endDate } = await activationDates(connection, membership.id, membership.user_id, membership.plan_id);
-    await connection.execute(
-      `UPDATE memberships
-       SET status = 'active', start_date = ?, end_date = ?, activated_by = ?, updated_at = UTC_TIMESTAMP()
-       WHERE id = ?`,
-      [startDate, endDate, adminId || null, membership.id]
-    );
-
-    await connection
-      .execute(
-        `INSERT INTO notifications (user_id, type, title_ar, title_en, body_ar, body_en)
-         VALUES (?, 'membership_activated', ?, ?, ?, ?)`,
-        [
-          membership.user_id,
-          "تم تفعيل عضويتك",
-          "Your membership is active",
-          `عضويتك مفعّلة حتى ${endDate}.`,
-          `Your membership is active until ${endDate}.`
-        ]
-      )
-      .catch(() => {});
-
-    return { id: membership.id, status: "active", startDate, endDate };
-  });
+// Online renewal: extends an active membership by the renewal plan's
+// duration (+ bonus days), starting from the later of its current end date
+// and today -- so renewing early never loses days and renewing after a
+// lapse never back-dates. Locks the membership row; refuses anything that
+// is no longer active (the caller then refunds/flags rather than silently
+// extending a cancelled membership).
+async function extendOnConnection(connection, membershipId, planId, adminId = null) {
+  const [rows] = await connection.execute(
+    "SELECT id, user_id, status, end_date FROM memberships WHERE id = ? LIMIT 1 FOR UPDATE",
+    [membershipId]
+  );
+  const membership = rows[0];
+  if (!membership || membership.status !== "active") {
+    throw createHttpError(409, "This membership can no longer be renewed.", "MEMBERSHIP_NOT_RENEWABLE");
+  }
+  const [planRows] = await connection.execute(
+    "SELECT duration_days, bonus_days FROM plans WHERE id = ? LIMIT 1",
+    [planId]
+  );
+  if (!planRows[0]) {
+    throw createHttpError(404, "Plan not found.", "PLAN_NOT_FOUND");
+  }
+  const today = dateOnly(new Date());
+  const currentEnd = membership.end_date ? dateOnly(new Date(membership.end_date)) : today;
+  const base = currentEnd > today ? currentEnd : today;
+  const endDate = addDays(base, Number(planRows[0].duration_days || 0) + Number(planRows[0].bonus_days || 0));
+  await connection.execute(
+    "UPDATE memberships SET end_date = ?, updated_at = UTC_TIMESTAMP() WHERE id = ?",
+    [endDate, membershipId]
+  );
+  await connection
+    .execute(
+      `INSERT INTO notifications (user_id, type, title_ar, title_en, body_ar, body_en)
+       VALUES (?, 'membership_activated', ?, ?, ?, ?)`,
+      [
+        membership.user_id,
+        "تم تجديد عضويتك",
+        "Your membership was renewed",
+        `عضويتك مفعّلة حتى ${endDate}.`,
+        `Your membership is now active until ${endDate}.`
+      ]
+    )
+    .catch(() => {});
+  return { id: membership.id, status: "active", endDate };
 }
 
 async function maybeAutoActivate(membershipId, adminId = null) {
@@ -312,6 +362,8 @@ async function latestMembership(userId) {
 
 module.exports = {
   activateMembership,
+  activateOnConnection,
+  extendOnConnection,
   activeMembership,
   buy,
   expireMemberships,

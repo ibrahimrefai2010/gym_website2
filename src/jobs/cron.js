@@ -2,6 +2,7 @@ const cron = require("node-cron");
 const { hasDatabaseConfig, query } = require("../config/database");
 const tokenRepository = require("../repositories/tokenRepository");
 const taskService = require("../services/taskService");
+const paymentService = require("../services/paymentService");
 const { appLogger } = require("../utils/logger");
 const { env } = require("../config/env");
 
@@ -140,6 +141,20 @@ cron.schedule(
       await renewalReminders();
     } catch (error) {
       appLogger.error({ error }, "Renewal reminder cron failed");
+    }
+  },
+  { timezone: env.timezone }
+);
+
+// Moyasar safety net: settles pending online payments whose webhook was
+// missed and closes abandoned checkouts (see paymentService.finalizeMoyasarPayment).
+cron.schedule(
+  "*/10 * * * *",
+  async () => {
+    try {
+      await paymentService.reconcileMoyasarPayments();
+    } catch (error) {
+      appLogger.error({ error }, "Moyasar reconcile cron failed");
     }
   },
   { timezone: env.timezone }

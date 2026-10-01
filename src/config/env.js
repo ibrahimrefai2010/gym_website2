@@ -69,6 +69,10 @@ const env = {
   moyasarSecretKey: process.env.MOYASAR_SECRET_KEY || "",
   moyasarPublishableKey: process.env.MOYASAR_PUBLISHABLE_KEY || "",
   moyasarWebhookSecret: process.env.MOYASAR_WEBHOOK_SECRET || "",
+  // Only overridden in tests (local mock server).
+  moyasarApiBase: process.env.MOYASAR_API_BASE || "https://api.moyasar.com/v1",
+  // How long a hosted-checkout invoice stays payable before it expires.
+  moyasarInvoiceTtlMinutes: intEnv("MOYASAR_INVOICE_TTL_MINUTES", 60),
   paymentSuccessUrl:
     process.env.PAYMENT_SUCCESS_URL ||
     process.env.STRIPE_SUCCESS_URL ||

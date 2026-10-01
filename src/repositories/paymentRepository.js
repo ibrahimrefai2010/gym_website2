@@ -1,5 +1,5 @@
 const crypto = require("crypto");
-const { hasDatabaseConfig, query } = require("../config/database");
+const { hasDatabaseConfig, query, transaction } = require("../config/database");
 const { createHttpError } = require("../utils/httpError");
 const membershipRepository = require("./membershipRepository");
 
@@ -136,9 +136,137 @@ async function completePayment(paymentId, adminId) {
   return { id: payment.id, status: "completed", activation };
 }
 
+// ---- Moyasar hosted-checkout attempts --------------------------------------
+
+const PAYMENT_COLUMNS = `id, branch_id, user_id, membership_id, plan_id, purpose, provider, payment_method,
+  provider_reference, transaction_id, checkout_url, amount, currency, status, failure_reason,
+  expires_at, invoice_id, created_at, completed_at`;
+
+async function getPayment(id) {
+  ensureDatabase();
+  const rows = await query(`SELECT ${PAYMENT_COLUMNS} FROM payments WHERE id = ? LIMIT 1`, [id]);
+  return rows[0] || null;
+}
+
+async function findByProviderReference(provider, reference) {
+  ensureDatabase();
+  const rows = await query(
+    `SELECT ${PAYMENT_COLUMNS} FROM payments WHERE provider = ? AND provider_reference = ? ORDER BY id DESC LIMIT 1`,
+    [provider, reference]
+  );
+  return rows[0] || null;
+}
+
+// A still-open checkout for the same member + plan (double click, back
+// button) -- reused instead of minting a second Moyasar invoice.
+async function findOpenCheckout(userId, planId) {
+  ensureDatabase();
+  const rows = await query(
+    `SELECT ${PAYMENT_COLUMNS} FROM payments
+     WHERE user_id = ? AND plan_id = ? AND provider = 'moyasar' AND status = 'pending'
+       AND checkout_url IS NOT NULL AND expires_at > UTC_TIMESTAMP() + INTERVAL 5 MINUTE
+     ORDER BY id DESC LIMIT 1`,
+    [userId, planId]
+  );
+  return rows[0] || null;
+}
+
+// Creates the pending payment row (and, for a first purchase, the pending
+// membership it pays for) in one transaction. branch_id is always the
+// member's own branch, passed in by the service from the DB user row.
+async function createCheckoutAttempt({ userId, branchId, planId, amount, purpose, membershipId = null }) {
+  ensureDatabase();
+  return transaction(async (connection) => {
+    let targetMembershipId = membershipId;
+    if (purpose === "new") {
+      const [membershipResult] = await connection.execute(
+        "INSERT INTO memberships (user_id, plan_id, branch_id, status) VALUES (?, ?, ?, 'pending')",
+        [userId, planId, branchId]
+      );
+      targetMembershipId = membershipResult.insertId;
+    }
+    const [paymentResult] = await connection.execute(
+      `INSERT INTO payments (branch_id, user_id, membership_id, plan_id, purpose, provider, payment_method, amount, currency, status)
+       VALUES (?, ?, ?, ?, ?, 'moyasar', 'moyasar', ?, 'SAR', 'pending')`,
+      [branchId, userId, targetMembershipId, planId, purpose, amount]
+    );
+    return { paymentId: paymentResult.insertId, membershipId: targetMembershipId };
+  });
+}
+
+async function setCheckoutDetails(paymentId, { reference, checkoutUrl, expiresAt }) {
+  ensureDatabase();
+  await query(
+    `UPDATE payments SET provider_reference = ?, checkout_url = ?, expires_at = ?, updated_at = UTC_TIMESTAMP()
+     WHERE id = ? AND status = 'pending'`,
+    [reference, checkoutUrl, expiresAt, paymentId]
+  );
+}
+
+// Records a non-terminal failed card attempt on a still-payable invoice
+// (Moyasar keeps the invoice open for a retry).
+async function noteAttemptFailure(paymentId, reason) {
+  ensureDatabase();
+  await query(
+    "UPDATE payments SET failure_reason = ?, updated_at = UTC_TIMESTAMP() WHERE id = ? AND status = 'pending'",
+    [String(reason || "").slice(0, 255), paymentId]
+  );
+}
+
+// pending -> failed | cancelled, exactly once. A 'new' purchase's pending
+// membership is cancelled with it so it never lingers as a phantom. Returns
+// true only for the call that actually closed the attempt (so follow-ups
+// like the failed-payment task fire once).
+async function closeCheckoutAttempt(paymentId, status, reason, rawPayload = null) {
+  ensureDatabase();
+  return transaction(async (connection) => {
+    const [rows] = await connection.execute(
+      "SELECT id, membership_id, purpose, status FROM payments WHERE id = ? FOR UPDATE",
+      [paymentId]
+    );
+    const payment = rows[0];
+    if (!payment || payment.status !== "pending") {
+      return false;
+    }
+    await connection.execute(
+      `UPDATE payments SET status = ?, failure_reason = COALESCE(?, failure_reason), raw_payload = COALESCE(?, raw_payload),
+         checkout_url = NULL, updated_at = UTC_TIMESTAMP()
+       WHERE id = ?`,
+      [status, reason ? String(reason).slice(0, 255) : null, rawPayload ? JSON.stringify(rawPayload) : null, paymentId]
+    );
+    if (payment.purpose === "new" && payment.membership_id) {
+      await connection.execute(
+        "UPDATE memberships SET status = 'cancelled', cancelled_at = UTC_TIMESTAMP() WHERE id = ? AND status = 'pending'",
+        [payment.membership_id]
+      );
+    }
+    return true;
+  });
+}
+
+// Pending Moyasar attempts for the reconcile job: anything older than a
+// couple of minutes (a webhook may have been missed).
+async function listPendingMoyasar(limit = 50) {
+  ensureDatabase();
+  return query(
+    `SELECT ${PAYMENT_COLUMNS} FROM payments
+     WHERE provider = 'moyasar' AND status = 'pending' AND created_at < UTC_TIMESTAMP() - INTERVAL 2 MINUTE
+     ORDER BY created_at ASC
+     LIMIT ${Math.max(1, Math.min(Number(limit) || 50, 200))}`
+  );
+}
+
 module.exports = {
+  closeCheckoutAttempt,
   completePayment,
+  createCheckoutAttempt,
   createPayment,
+  findByProviderReference,
+  findOpenCheckout,
+  getPayment,
+  listPendingMoyasar,
+  noteAttemptFailure,
+  setCheckoutDetails,
   getPaymentOwnerBranch,
   hasProcessedEvent,
   recordEvent

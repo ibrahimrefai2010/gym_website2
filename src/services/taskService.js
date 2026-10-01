@@ -104,24 +104,25 @@ async function createTaskForNewLead(message, branchId) {
   );
 }
 
-// Trigger 3 (documented, NOT wired up): Moyasar payment integration doesn't
-// exist yet in this codebase (next phase per the roadmap) -- there is no
-// payment-webhook/failure event to call this from today. This is the
-// extension point the Moyasar phase should call once a payment actually
-// fails; it follows the exact same shape as the two wired triggers above
-// (same settings-gate pattern would apply once that phase adds its own
-// task_autogen_failed_payments-style key, left for that phase to add).
+// Trigger 3: a failed online (Moyasar) payment -- called once per attempt by
+// paymentService when an attempt closes as failed (declined card, amount
+// mismatch, abandoned after a failed card attempt). Gated by the per-branch
+// task_autogen_failed_payments setting (migration 202610010001).
 async function createTaskForFailedPayment(payment, branchId) {
   if (!branchId) {
+    return null;
+  }
+  const enabled = await autogenEnabled("task_autogen_failed_payments", branchId);
+  if (!enabled) {
     return null;
   }
   return taskRepository.createTask(
     {
       branchId,
       title: `Payment follow-up: failed payment${payment?.id ? ` #${payment.id}` : ""}`,
-      description: `Payment${payment?.id ? ` #${payment.id}` : ""} failed${
+      description: `Online payment${payment?.id ? ` #${payment.id}` : ""} failed${
         payment?.amount ? ` (${payment.amount} ${payment.currency || ""})` : ""
-      }. Follow up with the member about retrying or an alternate payment method.`,
+      }${payment?.failureReason ? ` -- reason: ${payment.failureReason}` : ""}. Follow up with the member about retrying or paying at reception.`,
       assignedTo: null,
       dueDate: null,
       priority: "high",
@@ -132,8 +133,31 @@ async function createTaskForFailedPayment(payment, branchId) {
   );
 }
 
+// Not a toggleable trigger: a paid payment that needs staff action (e.g. the
+// ZATCA invoice could not be issued because the branch VAT number is not
+// configured). Always created -- money was taken.
+async function createTaskForPaymentIssue(payment, message) {
+  if (!payment?.branch_id) {
+    return null;
+  }
+  return taskRepository.createTask(
+    {
+      branchId: payment.branch_id,
+      title: `Payment needs attention: #${payment.id}`,
+      description: message,
+      assignedTo: null,
+      dueDate: null,
+      priority: "urgent",
+      linkedResourceType: "payment",
+      linkedResourceId: payment.id
+    },
+    null
+  );
+}
+
 module.exports = {
   createTaskForExpiringMembership,
   createTaskForFailedPayment,
+  createTaskForPaymentIssue,
   createTaskForNewLead
 };
