@@ -283,6 +283,8 @@
                 <div class="field"><label for="planOriginalPrice">السعر قبل الخصم</label><input id="planOriginalPrice" name="originalPrice" type="number" min="1" step="0.01"></div>
                 <div class="field"><label for="planSortOrder">ترتيب العرض</label><input id="planSortOrder" name="displayOrder" type="number" value="0" required></div>
                 <div class="field"><label for="planCurrency">العملة</label><input id="planCurrency" name="currency" value="SAR" required></div>
+                <div class="field"><label for="planFeaturesEn" data-i18n="admin.cms.featuresEn">المزايا بالإنجليزية (ميزة في كل سطر)</label><textarea id="planFeaturesEn" name="featuresEn" rows="4" dir="ltr"></textarea></div>
+                <div class="field"><label for="planFeaturesAr" data-i18n="admin.cms.featuresAr">المزايا بالعربية (ميزة في كل سطر)</label><textarea id="planFeaturesAr" name="featuresAr" rows="4" dir="rtl"></textarea></div>
                 <label class="check-field" for="planIsFeatured"><input id="planIsFeatured" name="isFeatured" type="checkbox"> مميزة</label>
                 <label class="check-field" for="planIsActive"><input id="planIsActive" name="isActive" type="checkbox" checked> نشطة</label>
               </div>
@@ -296,7 +298,7 @@
           <div class="admin-panel table-shell">
             <table class="table">
               <thead><tr><th>الرقم</th><th>الاسم</th><th>العربي</th><th>المدة</th><th>السعر</th><th>الحالة</th><th>الإجراءات</th></tr></thead>
-              <tbody id="planRows"></tbody>
+              <tbody id="planRows" data-order-type="plans"></tbody>
             </table>
           </div>
         </section>
@@ -319,7 +321,8 @@
                 <div class="field"><label for="offerBadgeAr">وسم العرض العربي</label><input id="offerBadgeAr" name="badgeAr" required></div>
                 <div class="field full"><label for="offerBodyEn">نص العرض الرئيسي</label><textarea id="offerBodyEn" name="bodyEn" required></textarea></div>
                 <div class="field full"><label for="offerBodyAr">نص العرض العربي</label><textarea id="offerBodyAr" name="bodyAr" required></textarea></div>
-                <div class="field"><label for="offerValidUntil">صالح حتى</label><input id="offerValidUntil" name="validUntil" type="date"></div>
+                <div class="field"><label for="offerStartsAt" data-i18n="admin.cms.startsAt">يبدأ في</label><input id="offerStartsAt" name="startsAt" type="date"></div>
+                <div class="field"><label for="offerValidUntil" data-i18n="admin.cms.endsAt">ينتهي في</label><input id="offerValidUntil" name="validUntil" type="date"></div>
                 <div class="field"><label for="offerImageUrl">Offer image URL</label><input id="offerImageUrl" name="imageUrl" placeholder="/uploads/images/offer.webp"></div>
                 <div class="field"><label for="offerImageFile">Upload offer image</label><input id="offerImageFile" name="imageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-upload-target="offerImageUrl"></div>
                 <div class="field"><label for="offerDiscountValue">Discount value</label><input id="offerDiscountValue" name="discountValue" type="number" min="0" step="0.01" value="0"></div>
@@ -336,7 +339,7 @@
           <div class="admin-panel table-shell">
             <table class="table">
               <thead><tr><th>الرقم</th><th>Image</th><th>العنوان</th><th>العربي</th><th>التاريخ</th><th>Actions</th></tr></thead>
-              <tbody id="offerRows"></tbody>
+              <tbody id="offerRows" data-order-type="offers"></tbody>
             </table>
           </div>
         </section>
@@ -405,8 +408,11 @@
                 <div class="field"><label for="slideTitleAr">Title Arabic</label><input id="slideTitleAr" name="titleAr" required></div>
                 <div class="field full"><label for="slideBodyEn">Body English</label><textarea id="slideBodyEn" name="bodyEn" required></textarea></div>
                 <div class="field full"><label for="slideBodyAr">Body Arabic</label><textarea id="slideBodyAr" name="bodyAr" required></textarea></div>
-                <div class="field"><label for="slideSortOrder">Display order</label><input id="slideSortOrder" name="sortOrder" type="number" value="0"></div>
-                <label class="check-field" for="slideIsActive"><input id="slideIsActive" name="isActive" type="checkbox" checked> Active</label>
+                <div class="field"><label for="slideSortOrder" data-i18n="admin.cms.order">ترتيب العرض</label><input id="slideSortOrder" name="sortOrder" type="number" value="0"></div>
+                <div class="field"><label for="slideStartsAt" data-i18n="admin.cms.startsAt">يبدأ في</label><input id="slideStartsAt" name="startsAt" type="date"></div>
+                <div class="field"><label for="slideEndsAt" data-i18n="admin.cms.endsAt">ينتهي في</label><input id="slideEndsAt" name="endsAt" type="date"></div>
+                <label class="check-field" for="slideIsActive"><input id="slideIsActive" name="isActive" type="checkbox" checked> <span data-i18n="admin.cms.active">نشط</span></label>
+                <label class="check-field" for="slideShared" data-switcher-only hidden><input id="slideShared" name="shared" type="checkbox"> <span data-i18n="admin.cms.sharedSlide">يظهر في كل الفروع</span></label>
               </div>
               <div class="form-actions">
                 <button class="btn" type="submit" id="slideSubmitButton">Save slide</button>
@@ -417,7 +423,7 @@
             <div class="table-shell">
               <table class="table">
                 <thead><tr><th>الرقم</th><th>Image</th><th>العنوان</th><th>العربي</th><th>الحالة</th><th>Actions</th></tr></thead>
-                <tbody id="sliderRows"></tbody>
+                <tbody id="sliderRows" data-order-type="slides"></tbody>
               </table>
             </div>
           </div>
@@ -443,7 +449,40 @@
             <div class="admin-panel-header">
               <h2 data-i18n="admin.contactInfo">معلومات التواصل</h2>
             </div>
-            <div class="settings-grid" id="contactCards"></div>
+            <p class="muted" data-i18n="admin.cms.contactHelp">تظهر هذه البيانات في موقع الفرع الحالي فقط. اترك الحقل فارغًا لاستخدام القيمة الافتراضية.</p>
+            <form class="auth-form" id="contactForm" novalidate>
+              <div class="form-grid" id="contactFields"></div>
+              <button class="btn" type="submit" data-i18n="admin.cms.save">حفظ</button>
+              <p class="form-message" id="contactMessage" role="status"></p>
+            </form>
+          </div>
+
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.cms.faqs">الأسئلة الشائعة</h2>
+            </div>
+            <form class="auth-form" id="faqForm" novalidate>
+              <input type="hidden" name="id">
+              <div class="form-grid">
+                <div class="field"><label for="faqQuestionAr" data-i18n="admin.cms.questionAr">السؤال (عربي)</label><input id="faqQuestionAr" name="questionAr" maxlength="255" dir="rtl" required></div>
+                <div class="field"><label for="faqQuestionEn" data-i18n="admin.cms.questionEn">السؤال (إنجليزي)</label><input id="faqQuestionEn" name="questionEn" maxlength="255" dir="ltr" required></div>
+                <div class="field"><label for="faqAnswerAr" data-i18n="admin.cms.answerAr">الإجابة (عربي)</label><textarea id="faqAnswerAr" name="answerAr" rows="3" dir="rtl" required></textarea></div>
+                <div class="field"><label for="faqAnswerEn" data-i18n="admin.cms.answerEn">الإجابة (إنجليزي)</label><textarea id="faqAnswerEn" name="answerEn" rows="3" dir="ltr" required></textarea></div>
+                <label class="check-field"><input type="checkbox" name="isActive" checked> <span data-i18n="admin.cms.active">نشط</span></label>
+                <label class="check-field" data-switcher-only hidden><input type="checkbox" name="shared"> <span data-i18n="admin.cms.sharedFaq">مشترك بين كل الفروع</span></label>
+              </div>
+              <div class="inline-actions">
+                <button class="btn" type="submit" data-i18n="admin.cms.save">حفظ</button>
+                <button class="btn secondary" type="button" id="faqReset" data-i18n="admin.cms.new">جديد</button>
+              </div>
+              <p class="form-message" id="faqMessage" role="status"></p>
+            </form>
+            <div class="table-shell">
+              <table class="table">
+                <thead><tr><th></th><th data-i18n="admin.cms.question">السؤال</th><th data-i18n="admin.cms.scope">النطاق</th><th data-i18n="table.status">الحالة</th><th data-i18n="admin.tasks.actionsCol">الإجراءات</th></tr></thead>
+                <tbody id="faqRows" data-order-type="faqs"></tbody>
+              </table>
+            </div>
           </div>
         </section>
 

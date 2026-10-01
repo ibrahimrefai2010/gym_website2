@@ -3314,3 +3314,20 @@ html[dir="rtl"] .hero::after {
   color: var(--color-white);
   font: inherit;
 }
+
+/* ---- Admin reorder ---- */
+.order-tools { display: inline-flex; gap: 4px; align-items: center; margin-inline-end: 6px; }
+.drag-handle { cursor: grab; opacity: 0.6; user-select: none; }
+.icon-btn {
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0 4px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.icon-btn:focus-visible { outline: 2px solid var(--color-gold); }
+tr.is-dragging { opacity: 0.5; }
+tbody.order-saved { outline: 1px solid rgba(31, 138, 76, 0.6); }

@@ -681,8 +681,8 @@
       plans
         .map(
           (plan) => `
-            <tr>
-              <td>${escapeHtml(plan.id)}</td>
+            <tr draggable="true" data-order-id="${escapeHtml(plan.id)}">
+              <td>${orderHandle()} ${escapeHtml(plan.id)}</td>
               <td>${escapeHtml(planName(plan))}</td>
               <td>${escapeHtml(plan.name?.ar || "")}</td>
               <td>${Number(plan.durationDays || 0)} يوم${Number(plan.bonusDays || 0) ? ` + ${Number(plan.bonusDays)} إضافية` : ""}</td>
@@ -707,8 +707,8 @@
       (state.offers.length ? state.offers : state.publicData.offers || [])
         .map(
           (offer) => `
-            <tr>
-              <td>${escapeHtml(offer.id)}</td>
+            <tr draggable="true" data-order-id="${escapeHtml(offer.id)}">
+              <td>${orderHandle()} ${escapeHtml(offer.id)}</td>
               <td>${imageThumb(offer.imageUrl, offer.title?.en || offer.title?.ar || "Offer")}</td>
               <td>${escapeHtml(offer.title?.ar || offer.title?.en || "")}</td>
               <td>${escapeHtml(offer.title?.ar || "")}</td>
@@ -2547,6 +2547,188 @@
     });
   }
 
+  // ---- CMS (Part 2 §2.0.8) ----
+  const CONTACT_FIELDS = [
+    ["gym_name_ar", "admin.cms.f.gymNameAr", "rtl"], ["gym_name_en", "admin.cms.f.gymNameEn", "ltr"],
+    ["phone_number", "admin.cms.f.phone", "ltr"], ["whatsapp_number", "admin.cms.f.whatsapp", "ltr"],
+    ["contact_email", "admin.cms.f.email", "ltr"], ["google_maps_url", "admin.cms.f.maps", "ltr"],
+    ["address_ar", "admin.cms.f.addressAr", "rtl"], ["address_en", "admin.cms.f.addressEn", "ltr"],
+    ["working_hours_ar", "admin.cms.f.hoursAr", "rtl"], ["working_hours_en", "admin.cms.f.hoursEn", "ltr"],
+    ["whatsapp_message_ar", "admin.cms.f.waMsgAr", "rtl"], ["whatsapp_message_en", "admin.cms.f.waMsgEn", "ltr"],
+    ["instagram_url", "admin.cms.f.instagram", "ltr"], ["x_url", "admin.cms.f.x", "ltr"],
+    ["tiktok_url", "admin.cms.f.tiktok", "ltr"], ["snapchat_url", "admin.cms.f.snapchat", "ltr"],
+    ["meta_title_ar", "admin.cms.f.metaTitleAr", "rtl"], ["meta_title_en", "admin.cms.f.metaTitleEn", "ltr"],
+    ["meta_description_ar", "admin.cms.f.metaDescAr", "rtl"], ["meta_description_en", "admin.cms.f.metaDescEn", "ltr"],
+    ["favicon_url", "admin.cms.f.favicon", "ltr"]
+  ];
+
+  async function loadContactForm() {
+    try {
+      const data = await window.GymApi.request("/api/v1/cms/contact");
+      setHtml(
+        "#contactFields",
+        CONTACT_FIELDS.map(([key, label, dir]) => {
+          const long = key.startsWith("meta_description") || key.startsWith("whatsapp_message") || key.startsWith("address");
+          const value = escapeHtml(data.values[key] || "");
+          return `<div class="field"><label for="cms_${key}">${escapeHtml(t(label))}</label>${
+            long ? `<textarea id="cms_${key}" name="${key}" rows="2" dir="${dir}">${value}</textarea>` : `<input id="cms_${key}" name="${key}" dir="${dir}" value="${value}">`
+          }</div>`;
+        }).join("")
+      );
+    } catch (error) {
+      setMessage("#contactMessage", error.message, false);
+    }
+  }
+
+  async function loadFaqs() {
+    try {
+      state.faqs = await window.GymApi.request("/api/v1/cms/faqs");
+    } catch (_error) {
+      state.faqs = [];
+    }
+    const switcher = canSwitchBranchesClientSide();
+    setHtml(
+      "#faqRows",
+      state.faqs.length
+        ? state.faqs
+            .map(
+              (faq) => `<tr ${!faq.shared || switcher ? `draggable="true" data-order-id="${escapeHtml(faq.id)}"` : ""}>
+                <td>${!faq.shared || switcher ? orderHandle() : ""}</td>
+                <td>${escapeHtml(localize(faq.question))}</td>
+                <td>${escapeHtml(t(faq.shared ? "admin.cms.scopeShared" : "admin.cms.scopeBranch"))}</td>
+                <td>${escapeHtml(statusLabel(faq.isActive ? "active" : "inactive"))}</td>
+                <td>${
+                  !faq.shared || switcher
+                    ? `<div class="row-actions"><button class="btn small secondary" type="button" data-faq-action="edit" data-faq-id="${escapeHtml(faq.id)}">${escapeHtml(t("admin.tasks.edit"))}</button>
+                       <button class="btn small danger" type="button" data-faq-action="delete" data-faq-id="${escapeHtml(faq.id)}">${escapeHtml(t("admin.coach.delete"))}</button></div>`
+                    : `<small class="muted">${escapeHtml(t("admin.cms.sharedReadOnly"))}</small>`
+                }</td>
+              </tr>`
+            )
+            .join("")
+        : `<tr><td colspan="5">${escapeHtml(t("admin.cms.noFaqs"))}</td></tr>`
+    );
+  }
+
+  function orderHandle() {
+    return `<span class="order-tools"><span class="drag-handle" aria-hidden="true">⋮⋮</span><button class="icon-btn" type="button" data-move="up" aria-label="${escapeHtml(t("admin.cms.moveUp"))}">↑</button><button class="icon-btn" type="button" data-move="down" aria-label="${escapeHtml(t("admin.cms.moveDown"))}">↓</button></span>`;
+  }
+
+  // Drag-and-drop + keyboard-friendly up/down reordering for any tbody with
+  // data-order-type; saves the new order immediately (server re-checks the
+  // branch of every id).
+  function setupReorder() {
+    let dragging = null;
+    const save = async (tbody) => {
+      const ids = [...tbody.querySelectorAll("tr[data-order-id]")].map((row) => row.dataset.orderId);
+      try {
+        await window.GymApi.request(`/api/v1/cms/order/${tbody.dataset.orderType}`, { method: "PUT", body: JSON.stringify({ ids }) });
+        tbody.classList.add("order-saved");
+        window.setTimeout(() => tbody.classList.remove("order-saved"), 900);
+      } catch (error) {
+        window.alert(error.message || t("admin.cms.orderFailed"));
+      }
+    };
+    document.querySelectorAll("tbody[data-order-type]").forEach((tbody) => {
+      tbody.addEventListener("dragstart", (event) => {
+        dragging = event.target.closest("tr[data-order-id]");
+        dragging?.classList.add("is-dragging");
+      });
+      tbody.addEventListener("dragover", (event) => {
+        const over = event.target.closest("tr[data-order-id]");
+        if (!dragging || !over || over === dragging || over.parentNode !== tbody) return;
+        event.preventDefault();
+        const rect = over.getBoundingClientRect();
+        tbody.insertBefore(dragging, event.clientY > rect.top + rect.height / 2 ? over.nextSibling : over);
+      });
+      tbody.addEventListener("drop", (event) => event.preventDefault());
+      tbody.addEventListener("dragend", () => {
+        if (!dragging) return;
+        dragging.classList.remove("is-dragging");
+        dragging = null;
+        save(tbody);
+      });
+      tbody.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-move]");
+        if (!button) return;
+        const row = button.closest("tr[data-order-id]");
+        const sibling = button.dataset.move === "up" ? row.previousElementSibling : row.nextElementSibling;
+        if (!sibling || !sibling.dataset.orderId) return;
+        if (button.dataset.move === "up") tbody.insertBefore(row, sibling);
+        else tbody.insertBefore(sibling, row);
+        row.querySelector(`[data-move="${button.dataset.move}"]`)?.focus();
+        save(tbody);
+      });
+    });
+  }
+
+  function setupCms() {
+    document.querySelector("#contactForm")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const values = Object.fromEntries(new FormData(event.currentTarget).entries());
+      if (!window.confirm(t("admin.cms.confirmContact").replace("{branch}", branchSuffix()))) return;
+      try {
+        await window.GymApi.request("/api/v1/cms/contact", { method: "PUT", body: JSON.stringify({ values }) });
+        setMessage("#contactMessage", t("admin.cms.saved"), true);
+      } catch (error) {
+        setMessage("#contactMessage", error.message, false);
+      }
+    });
+    const faqForm = document.querySelector("#faqForm");
+    const resetFaq = () => {
+      faqForm.reset();
+      faqForm.elements.id.value = "";
+    };
+    document.querySelector("#faqReset")?.addEventListener("click", resetFaq);
+    faqForm?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const values = Object.fromEntries(new FormData(faqForm).entries());
+      const body = { ...values, id: values.id || undefined, isActive: faqForm.elements.isActive.checked, shared: Boolean(faqForm.elements.shared?.checked) };
+      try {
+        await window.GymApi.request("/api/v1/cms/faqs", { method: "POST", body: JSON.stringify(body) });
+        setMessage("#faqMessage", t("admin.cms.saved"), true);
+        resetFaq();
+        loadFaqs();
+      } catch (error) {
+        setMessage("#faqMessage", error.message, false);
+      }
+    });
+    document.querySelector("#faqRows")?.addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-faq-action]");
+      if (!button) return;
+      const faq = (state.faqs || []).find((item) => String(item.id) === button.dataset.faqId);
+      if (!faq) return;
+      if (button.dataset.faqAction === "edit") {
+        faqForm.elements.id.value = faq.id;
+        faqForm.elements.questionAr.value = faq.question.ar;
+        faqForm.elements.questionEn.value = faq.question.en;
+        faqForm.elements.answerAr.value = faq.answer.ar;
+        faqForm.elements.answerEn.value = faq.answer.en;
+        faqForm.elements.isActive.checked = faq.isActive;
+        if (faqForm.elements.shared) faqForm.elements.shared.checked = faq.shared;
+        faqForm.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      const scope = faq.shared ? t("admin.cms.scopeShared") : branchSuffix();
+      if (!window.confirm(t("admin.cms.confirmDeleteFaq").replace("{branch}", scope))) return;
+      try {
+        await window.GymApi.request(`/api/v1/cms/faqs/${faq.id}`, { method: "DELETE" });
+        loadFaqs();
+      } catch (error) {
+        setMessage("#faqMessage", error.message, false);
+      }
+    });
+    document.querySelector('[data-admin-tab="contact"]')?.addEventListener("click", () => {
+      document.querySelectorAll("[data-switcher-only]").forEach((node) => (node.hidden = !canSwitchBranchesClientSide()));
+      loadContactForm();
+      loadFaqs();
+    });
+    document.querySelector('[data-admin-tab="slider"]')?.addEventListener("click", () => {
+      document.querySelectorAll("[data-switcher-only]").forEach((node) => (node.hidden = !canSwitchBranchesClientSide()));
+    });
+    setupReorder();
+  }
+
   // Leads/CRM (Part 2): same on-demand, filtered + paginated pattern as
   // loadTasks above (replaces the old one-shot /api/v1/messages fetch inside
   // load()'s Promise.all, which returned a flat, unfiltered array of up to
@@ -2634,8 +2816,8 @@
       (state.slides.length ? state.slides : state.publicData.slides || [])
         .map(
           (slide) => `
-            <tr>
-              <td>${escapeHtml(slide.id)}</td>
+            <tr draggable="true" data-order-id="${escapeHtml(slide.id)}">
+              <td>${orderHandle()} ${escapeHtml(slide.id)}</td>
               <td>${imageThumb(slide.imageUrl, slide.title?.en || slide.title?.ar || "Slide")}</td>
               <td>${escapeHtml(slide.title?.ar || slide.title?.en || "")}</td>
               <td>${escapeHtml(slide.title?.ar || "")}</td>
@@ -2702,30 +2884,9 @@
   }
 
   function renderContact() {
-    const contact = state.publicData.contact || {};
-    const fields = [
-      ["النادي", localize(state.publicData.brand?.localeName)],
-      ["الهاتف", contact.phone],
-      ["واتساب", contact.whatsapp],
-      ["البريد", contact.email],
-      ["العنوان", localize(contact.address)],
-      ["الخريطة", contact.mapEmbedUrl]
-    ];
-
-    setHtml(
-      "#contactCards",
-      fields
-        .map(
-          ([label, value]) => `
-            <div class="settings-card">
-              <span>${escapeHtml(label)}</span>
-              <strong>${escapeHtml(value || "")}</strong>
-            </div>
-          `
-        )
-        .join("")
-    );
+    /* Contact is an editable form now -- see loadContactForm(). */
   }
+
 
   // Leads/CRM (Part 2): dashboard stat is server-computed across ALL
   // messages (adminRepository.getOverview's "Unread messages" stat), not
@@ -3284,8 +3445,8 @@
       isFeatured: Boolean(form.elements.isFeatured?.checked),
       highlighted: Boolean(form.elements.isFeatured?.checked),
       isActive: Boolean(form.elements.isActive?.checked),
-      featuresEn: [],
-      featuresAr: []
+      featuresEn: String(payload.featuresEn || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean),
+      featuresAr: String(payload.featuresAr || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
     };
   }
 
@@ -3335,6 +3496,8 @@
     form.elements.currency.value = plan.currency || "SAR";
     form.elements.isFeatured.checked = Boolean(plan.isFeatured || plan.highlighted);
     form.elements.isActive.checked = plan.isActive !== false;
+    form.elements.featuresEn.value = (plan.features?.en || []).join("\n");
+    form.elements.featuresAr.value = (plan.features?.ar || []).join("\n");
 
     document.querySelector("#planSubmitButton").textContent = "تحديث الباقة";
     document.querySelector("#planCancelEdit")?.removeAttribute("hidden");
@@ -3355,6 +3518,7 @@
       bodyEn: String(payload.bodyEn || "").trim(),
       bodyAr: String(payload.bodyAr || "").trim(),
       validUntil: payload.validUntil,
+      startsAt: payload.startsAt || null,
       imageUrl: imageUrl(payload.imageUrl),
       discountValue: numberValue(payload.discountValue),
       sortOrder: numberValue(payload.sortOrder),
@@ -3399,6 +3563,7 @@
     form.elements.bodyEn.value = offer.body?.en || offer.description?.en || "";
     form.elements.bodyAr.value = offer.body?.ar || offer.description?.ar || "";
     form.elements.validUntil.value = dateInputValue(offer.validUntil || offer.endDate || offer.expiresAt);
+    form.elements.startsAt.value = dateInputValue(offer.startsAt);
     form.elements.imageUrl.value = offer.imageUrl || "";
     form.elements.discountValue.value = offer.discountValue || 0;
     form.elements.sortOrder.value = offer.sortOrder || offer.priority || 0;
@@ -3420,7 +3585,10 @@
       bodyEn: String(payload.bodyEn || "").trim(),
       bodyAr: String(payload.bodyAr || "").trim(),
       sortOrder: numberValue(payload.sortOrder),
-      isActive: Boolean(form.elements.isActive?.checked)
+      isActive: Boolean(form.elements.isActive?.checked),
+      startsAt: payload.startsAt || null,
+      endsAt: payload.endsAt || null,
+      shared: Boolean(form.elements.shared?.checked)
     };
   }
 
@@ -3457,6 +3625,9 @@
     form.elements.bodyAr.value = slide.body?.ar || "";
     form.elements.sortOrder.value = slide.sortOrder || 0;
     form.elements.isActive.checked = slide.isActive !== false;
+    form.elements.startsAt.value = dateInputValue(slide.startsAt);
+    form.elements.endsAt.value = dateInputValue(slide.endsAt);
+    if (form.elements.shared) form.elements.shared.checked = Boolean(slide.shared);
     document.querySelector("#slideSubmitButton").textContent = "Update slide";
     document.querySelector("#slideCancelEdit")?.removeAttribute("hidden");
     setMessage("#slideMessage", `Editing slide ${slide.id}`, true);
@@ -4142,6 +4313,7 @@
     setupBell();
     setupStaff();
     setupAudit();
+    setupCms();
     setupSession();
     setupBranchSwitcher();
     load();
