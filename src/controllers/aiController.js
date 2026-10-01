@@ -1,16 +1,47 @@
 const aiAssistantService = require("../services/aiAssistantService");
-const { cleanString, requireFields } = require("../utils/validator");
+const { resolveReportBranchIds } = require("./reportController");
+const { query } = require("../config/database");
+const { env } = require("../config/env");
+const { createHttpError } = require("../utils/httpError");
+
+// Branch scope is always server-resolved: the admin's effective branch, or
+// consolidated (?scope=all) only for admins who can switch branches -- the
+// same rule as the finance reports. The client never sends a branch id.
+async function resolveScope(req) {
+  const branchIds = await resolveReportBranchIds(req);
+  const rows = await query(`SELECT id, name_en FROM branches WHERE id IN (${branchIds.map(() => "?").join(",")})`, branchIds);
+  return {
+    branchIds,
+    branchNames: Object.fromEntries(rows.map((row) => [Number(row.id), row.name_en])),
+    consolidated: String(req.query.scope || "") === "all"
+  };
+}
+
+function ensureEnabled() {
+  if (!env.aiAssistantEnabled) {
+    throw createHttpError(404, "Not found.", "AI_DISABLED");
+  }
+}
+
+async function status(_req, res) {
+  res.json({ success: true, data: { enabled: env.aiAssistantEnabled, mode: env.anthropicApiKey ? "ai" : "basic" } });
+}
 
 async function ask(req, res) {
-  requireFields(req.body, ["prompt"]);
+  ensureEnabled();
   const data = await aiAssistantService.ask({
-    prompt: cleanString(req.body.prompt, 2000),
-    branchId: cleanString(req.body.branchId || req.query.branchId || "", 20) || null,
-    adminId: req.user?.id
+    prompt: req.body?.prompt,
+    scope: await resolveScope(req),
+    admin: { id: req.user.id, role: req.user.role },
+    ipAddress: req.ip
   });
   res.json({ success: true, data });
 }
 
-module.exports = {
-  ask
-};
+async function insights(req, res) {
+  ensureEnabled();
+  const data = await aiAssistantService.insights(await resolveScope(req));
+  res.json({ success: true, data });
+}
+
+module.exports = { ask, insights, status };

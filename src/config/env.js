@@ -64,6 +64,13 @@ const env = {
   stripeSecretKey: process.env.STRIPE_SECRET_KEY || "",
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || "",
 
+  // AI assistant (Part 2 §2.3). Off unless explicitly enabled.
+  aiAssistantEnabled: boolEnv("AI_ASSISTANT_ENABLED", false),
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY || "",
+  aiModel: process.env.AI_MODEL || "claude-opus-5-5",
+  aiEffort: ["low", "medium", "high", "xhigh", "max"].includes(process.env.AI_EFFORT) ? process.env.AI_EFFORT : "low",
+  aiRateLimitPerHour: intEnv("AI_RATE_LIMIT_PER_HOUR", 30),
+
   // Moyasar — the only online payment provider.
   moyasarMode: (process.env.MOYASAR_MODE || "test").toLowerCase() === "live" ? "live" : "test",
   moyasarSecretKey: process.env.MOYASAR_SECRET_KEY || "",
