@@ -35,7 +35,9 @@ const readPermissions = {
   offers: "offers:write",
   payments: "payments:read",
   permissions: "permissions:manage",
-  plans: "plans:write",
+  // Reception / sales staff need to read their branch's plans to take a
+  // payment; editing plans still needs plans:write (see writePermissions).
+  plans: ["plans:write", "payments:write", "memberships:write"],
   rolePermissions: "permissions:manage",
   roles: "roles:manage",
   settings: "settings:write",
@@ -70,7 +72,13 @@ async function overview(req, res) {
 
 async function list(req, res) {
   const permission = readPermissions[req.params.resource];
-  if (permission && !(await rbacRepository.hasPermission(req.user?.id, req.user?.role, permission))) {
+  const anyOf = Array.isArray(permission) ? permission : permission ? [permission] : [];
+  let allowed = anyOf.length === 0;
+  for (const key of anyOf) {
+    if (allowed) break;
+    allowed = await rbacRepository.hasPermission(req.user?.id, req.user?.role, key);
+  }
+  if (!allowed) {
     throw createHttpError(403, "Your admin role cannot access this resource.", "PERMISSION_DENIED");
   }
 
