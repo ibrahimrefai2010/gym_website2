@@ -56,8 +56,8 @@ async function checkIn(req, res) {
 }
 
 async function checkOut(req, res) {
-  const data = await attendanceRepository.checkOut(req.params.id, req.user?.id);
-  await createLog("admin", req.user?.id, "attendance.check_out", "attendance_logs", req.params.id, null, req.ip);
+  const data = await attendanceRepository.checkOut(req.params.id, req.user?.id, req.effectiveBranchId || null);
+  await createLog("admin", req.user?.id, "attendance.check_out", "attendance_logs", req.params.id, null, req.ip, req.effectiveBranchId || null);
   res.json({ success: true, data });
 }
 

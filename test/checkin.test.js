@@ -13,6 +13,7 @@
 //   4. Manual lookup by email is branch-scoped -- the same email registered
 //      under both branches resolves to the scanning branch's account.
 //   5. daily-log / summary only show the admin's own branch.
+//   6. Check-out by id is branch-owned: the other branch gets a 404.
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
@@ -284,4 +285,17 @@ test("daily log and summary only include the admin's own branch", { skip: noDb }
   const summary = await api("GET", "/api/v1/attendance/summary", { token: ctx.womenToken });
   assert.equal(summary.status, 200);
   assert.ok(summary.json.data.today >= 1);
+});
+
+test("check-out by id is branch-owned: the other branch gets a 404", { skip: noDb }, async () => {
+  if (!ctx.ready) return;
+  const member = await createMember(ctx.mainBranchId, "checkout");
+  const checkIn = await api("POST", "/api/v1/attendance/check-in", { token: ctx.mainToken, body: { cardToken: member.cardToken } });
+  const id = checkIn.json.data.attendance.id;
+
+  const cross = await api("PATCH", `/api/v1/attendance/${id}/check-out`, { token: ctx.womenToken });
+  assert.equal(cross.status, 404);
+  const own = await api("PATCH", `/api/v1/attendance/${id}/check-out`, { token: ctx.mainToken });
+  assert.equal(own.status, 200);
+  assert.equal(own.json.data.status, "checked_out");
 });

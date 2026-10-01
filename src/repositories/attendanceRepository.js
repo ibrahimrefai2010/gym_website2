@@ -4,6 +4,12 @@ const { assertEnum, positiveInteger } = require("../utils/validator");
 
 const ATTENDANCE_METHODS = ["manual", "qr", "mobile", "kiosk", "import"];
 
+// check_in_at is stored in UTC; reception days and peak hours are bucketed in
+// the business timezone (Asia/Riyadh, env.timezone). Saudi Arabia has no DST,
+// so a fixed numeric offset is exact and needs no MySQL tz tables.
+const LOCAL_CHECK_IN = "CONVERT_TZ(a.check_in_at, '+00:00', '+03:00')";
+const LOCAL_TODAY = "DATE(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+03:00'))";
+
 function ensureDatabase() {
   if (!hasDatabaseConfig()) {
     throw createHttpError(503, "Database configuration is required.", "DATABASE_REQUIRED");
@@ -96,13 +102,15 @@ async function findRecentOpenCheckIn(userId, minutes, connection) {
   return rows[0] || null;
 }
 
-async function checkOut(id, adminId = null) {
+// branchId: the caller's server-derived branch -- a row from another branch
+// gets the same 404 as a missing one (no existence leak across branches).
+async function checkOut(id, adminId = null, branchId = null) {
   ensureDatabase();
   const result = await query(
     `UPDATE attendance_logs
      SET check_out_at = UTC_TIMESTAMP(), status = 'checked_out', updated_by = ?, updated_at = UTC_TIMESTAMP()
-     WHERE id = ? AND deleted_at IS NULL AND status = 'checked_in'`,
-    [adminId, id]
+     WHERE id = ? AND deleted_at IS NULL AND status = 'checked_in' AND branch_id = ?`,
+    [adminId, id, branchId]
   );
   if (result.affectedRows === 0) {
     throw createHttpError(404, "Open attendance record not found.", "ATTENDANCE_NOT_FOUND");
@@ -111,9 +119,8 @@ async function checkOut(id, adminId = null) {
 }
 
 // Reception "today's log" widget -- branchId is required (same "empty means
-// no rows" convention as taskRepository/coachRepository), date defaults to
-// today (server/DB time, UTC -- consistent with every other UTC_TIMESTAMP()
-// write in this app).
+// no rows" convention as taskRepository/coachRepository), date (YYYY-MM-DD)
+// defaults to today, both in Riyadh local time (see LOCAL_CHECK_IN).
 async function dailyLog({ branchId = "", date = "" } = {}) {
   ensureDatabase();
   if (!branchId) {
@@ -122,10 +129,10 @@ async function dailyLog({ branchId = "", date = "" } = {}) {
   const where = ["a.deleted_at IS NULL", "a.branch_id = ?"];
   const params = [branchId];
   if (date) {
-    where.push("DATE(a.check_in_at) = ?");
+    where.push(`DATE(${LOCAL_CHECK_IN}) = ?`);
     params.push(date);
   } else {
-    where.push("DATE(a.check_in_at) = UTC_DATE()");
+    where.push(`DATE(${LOCAL_CHECK_IN}) = ${LOCAL_TODAY}`);
   }
   return query(
     `SELECT a.id, a.user_id, u.full_name AS customer, u.member_code, a.check_in_at, a.check_out_at,
@@ -138,9 +145,10 @@ async function dailyLog({ branchId = "", date = "" } = {}) {
   );
 }
 
-// Day-of-week x hour-of-day peak-hours grid for a branch, over the trailing
-// `days` window (default 90). DAYOFWEEK() is MySQL's own 1=Sunday..7=Saturday
-// numbering -- returned as-is; the admin UI maps it to display labels.
+// Day-of-week x hour-of-day peak-hours grid for a branch (Riyadh local
+// time), over the trailing `days` window (default 90). DAYOFWEEK() is
+// MySQL's own 1=Sunday..7=Saturday numbering -- returned as-is; the admin UI
+// maps it to display labels.
 async function heatmap({ branchId = "", days = 90 } = {}) {
   ensureDatabase();
   if (!branchId) {
@@ -148,15 +156,16 @@ async function heatmap({ branchId = "", days = 90 } = {}) {
   }
   const windowDays = positiveInteger(days, 90, 365);
   return query(
-    `SELECT DAYOFWEEK(a.check_in_at) AS day_of_week, HOUR(a.check_in_at) AS hour_of_day, COUNT(*) AS total
+    `SELECT DAYOFWEEK(${LOCAL_CHECK_IN}) AS day_of_week, HOUR(${LOCAL_CHECK_IN}) AS hour_of_day, COUNT(*) AS total
      FROM attendance_logs a
      WHERE a.deleted_at IS NULL AND a.branch_id = ? AND a.check_in_at >= UTC_TIMESTAMP() - INTERVAL ? DAY
-     GROUP BY DAYOFWEEK(a.check_in_at), HOUR(a.check_in_at)`,
+     GROUP BY day_of_week, hour_of_day`,
     [branchId, windowDays]
   );
 }
 
-// Daily/weekly/monthly check-in totals for a branch's reception dashboard.
+// Daily/weekly/monthly check-in totals for a branch's reception dashboard
+// (Riyadh local days; week/month are the trailing 7/30 days incl. today).
 async function summary({ branchId = "" } = {}) {
   ensureDatabase();
   if (!branchId) {
@@ -164,11 +173,11 @@ async function summary({ branchId = "" } = {}) {
   }
   const rows = await query(
     `SELECT
-       SUM(CASE WHEN DATE(check_in_at) = UTC_DATE() THEN 1 ELSE 0 END) AS today,
-       SUM(CASE WHEN check_in_at >= UTC_DATE() - INTERVAL 6 DAY THEN 1 ELSE 0 END) AS week,
-       SUM(CASE WHEN check_in_at >= UTC_DATE() - INTERVAL 29 DAY THEN 1 ELSE 0 END) AS month
-     FROM attendance_logs
-     WHERE deleted_at IS NULL AND branch_id = ?`,
+       SUM(CASE WHEN DATE(${LOCAL_CHECK_IN}) = ${LOCAL_TODAY} THEN 1 ELSE 0 END) AS today,
+       SUM(CASE WHEN DATE(${LOCAL_CHECK_IN}) >= ${LOCAL_TODAY} - INTERVAL 6 DAY THEN 1 ELSE 0 END) AS week,
+       SUM(CASE WHEN DATE(${LOCAL_CHECK_IN}) >= ${LOCAL_TODAY} - INTERVAL 29 DAY THEN 1 ELSE 0 END) AS month
+     FROM attendance_logs a
+     WHERE a.deleted_at IS NULL AND a.branch_id = ?`,
     [branchId]
   );
   const row = rows[0] || {};
