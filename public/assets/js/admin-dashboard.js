@@ -2049,6 +2049,114 @@
     });
   }
 
+  // AI assistant (Part 2 §2.3): read-only, branch-scoped server-side.
+  const AI_EXAMPLES = ["admin.ai.ex1", "admin.ai.ex2", "admin.ai.ex3", "admin.ai.ex4"];
+
+  function appendAiMessage(role, text, meta = {}) {
+    const thread = document.querySelector("#aiThread");
+    if (!thread) return;
+    const item = document.createElement("div");
+    item.className = `ai-msg ai-msg-${role}`;
+    const body = document.createElement("div");
+    body.className = "ai-msg-body";
+    body.textContent = text;
+    item.appendChild(body);
+    if (role === "assistant" && text) {
+      const tools = document.createElement("div");
+      tools.className = "ai-msg-meta";
+      if (meta.mode === "basic") {
+        tools.textContent = t("admin.ai.basicMode");
+      }
+      const copy = document.createElement("button");
+      copy.type = "button";
+      copy.className = "btn small secondary";
+      copy.textContent = t("admin.ai.copy");
+      copy.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          copy.textContent = t("admin.ai.copied");
+        } catch (_error) {
+          copy.textContent = "—";
+        }
+      });
+      tools.appendChild(copy);
+      item.appendChild(tools);
+    }
+    thread.appendChild(item);
+    thread.scrollTop = thread.scrollHeight;
+  }
+
+  async function loadAiStatus() {
+    try {
+      state.aiStatus = await window.GymApi.request("/api/v1/ai/status");
+    } catch (_error) {
+      state.aiStatus = { enabled: false };
+    }
+    const tab = document.querySelector('[data-admin-tab="aiAssistant"]');
+    if (tab) tab.hidden = !state.aiStatus.enabled;
+    if (state.aiStatus.enabled) {
+      try {
+        state.aiInsights = await window.GymApi.request("/api/v1/ai/insights");
+      } catch (_error) {
+        state.aiInsights = null;
+      }
+      renderAiInsights();
+    }
+  }
+
+  function setupAiAssistant() {
+    state.aiScope = "branch";
+    setHtml(
+      "#aiExamples",
+      AI_EXAMPLES.map((key) => `<button class="btn small ghost" type="button" data-ai-example="${key}">${escapeHtml(t(key))}</button>`).join("")
+    );
+    document.querySelector("#aiExamples")?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-ai-example]");
+      if (!button) return;
+      const prompt = document.querySelector("#aiPrompt");
+      prompt.value = t(button.dataset.aiExample);
+      document.querySelector("#aiAssistantForm")?.requestSubmit();
+    });
+    document.querySelectorAll("[data-ai-scope]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.aiScope = button.dataset.aiScope;
+        document.querySelectorAll("[data-ai-scope]").forEach((other) => other.classList.toggle("is-active", other === button));
+      });
+    });
+    document.querySelector('[data-admin-tab="aiAssistant"]')?.addEventListener("click", () => {
+      const scope = document.querySelector("#aiScope");
+      if (scope) scope.hidden = !canSwitchBranchesClientSide();
+    });
+    document.querySelector("#aiPrompt")?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        document.querySelector("#aiAssistantForm")?.requestSubmit();
+      }
+    });
+    document.querySelector("#aiAssistantForm")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const input = document.querySelector("#aiPrompt");
+      const submit = document.querySelector("#aiSubmit");
+      const prompt = input.value.trim();
+      if (!prompt || submit.disabled) return;
+      appendAiMessage("user", prompt);
+      input.value = "";
+      submit.disabled = true;
+      setMessage("#aiAssistantMessage", t("admin.ai.thinking"), true);
+      try {
+        const query = state.aiScope === "all" ? "?scope=all" : "";
+        const result = await window.GymApi.request(`/api/v1/ai/assistant${query}`, { method: "POST", body: JSON.stringify({ prompt }) });
+        appendAiMessage("assistant", result.answer || t("admin.ai.noAnswer"), result);
+        setMessage("#aiAssistantMessage", "", true);
+      } catch (error) {
+        setMessage("#aiAssistantMessage", error.message || t("admin.ai.unavailable"), false);
+      } finally {
+        submit.disabled = false;
+        input.focus();
+      }
+    });
+  }
+
   // Leads/CRM (Part 2): same on-demand, filtered + paginated pattern as
   // loadTasks above (replaces the old one-shot /api/v1/messages fetch inside
   // load()'s Promise.all, which returned a flat, unfiltered array of up to
@@ -2504,48 +2612,16 @@
   }
 
   function renderAiAssistant() {
-    const answerRoot = document.querySelector("#aiAnswer");
-    if (answerRoot) {
-      answerRoot.textContent = state.aiAnswer?.answer || "";
-    }
+    renderAiInsights();
+  }
 
-    const metrics = state.reportSummary?.metrics || {};
-    const smartMetrics = [
-      ["Revenue", metrics.revenue],
-      ["Expenses", metrics.expenses],
-      ["Profit", metrics.profit],
-      ["New customers", metrics.newCustomers],
-      ["Active memberships", metrics.activeMemberships],
-      ["Attendance", metrics.attendance]
-    ];
-    setHtml(
-      "#smartMetricRows",
-      smartMetrics
-        .map(
-          ([label, value]) => `
-            <article class="metric-card">
-              <span>${escapeHtml(label)}</span>
-              <strong>${escapeHtml(value ?? 0)}</strong>
-              <small>${escapeHtml(state.reportSummary?.range?.from || "")} - ${escapeHtml(state.reportSummary?.range?.to || "")}</small>
-            </article>
-          `
-        )
-        .join("")
-    );
-    setHtml(
-      "#aiRecommendationRows",
-      (state.reportSummary?.aiRecommendations || [])
-        .map(
-          (item) => `
-            <tr>
-              <td>${escapeHtml(item.title)}</td>
-              <td>${escapeHtml(item.category)}</td>
-              <td>${escapeHtml(item.priority)}</td>
-            </tr>
-          `
-        )
-        .join("")
-    );
+  function renderAiInsights() {
+    const panel = document.querySelector("#aiInsightsPanel");
+    const items = state.aiInsights?.items || [];
+    if (!panel) return;
+    panel.hidden = !items.length;
+    const lang = window.GymI18n.currentLang();
+    setHtml("#aiInsights", items.map((item) => `<li class="ai-insight ai-${escapeHtml(item.tone)}">${escapeHtml(item[lang] || item.en)}</li>`).join(""));
   }
 
   function renderLogs() {
@@ -2699,6 +2775,7 @@
       loadMembers(1);
       loadTasks(1);
       loadCheckin();
+      loadAiStatus();
       loadPayments(1);
       loadInvoices(1);
       // Leads/CRM (Part 2): loaded the same on-demand way as tasks -- see
@@ -3167,21 +3244,6 @@
       }
     });
 
-    document.querySelector("#aiAssistantForm")?.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const payload = formPayload(event.currentTarget);
-      try {
-        state.aiAnswer = await window.GymApi.request("/api/v1/ai/assistant", {
-          method: "POST",
-          body: JSON.stringify({ prompt: payload.prompt })
-        });
-        setMessage("#aiAssistantMessage", "Answered.", true);
-        await load();
-        renderAiAssistant();
-      } catch (error) {
-        setMessage("#aiAssistantMessage", error.message || t("admin.readOnly"), false);
-      }
-    });
   }
 
   function setupPlanActions() {
@@ -3704,6 +3766,7 @@
     setupReports();
     setupCoaches();
     setupMemberActions();
+    setupAiAssistant();
     setupSession();
     setupBranchSwitcher();
     load();

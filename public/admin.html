@@ -46,7 +46,7 @@
           <button type="button" data-admin-tab="reports" data-i18n="admin.rep.title">التقارير المالية</button>
           <button type="button" data-admin-tab="adminAccounts" data-i18n="admin.adminAccounts">حسابات الإدارة</button>
           <button type="button" data-admin-tab="access">Access Control</button>
-          <button type="button" data-admin-tab="aiAssistant">AI Assistant</button>
+          <button type="button" data-admin-tab="aiAssistant" data-i18n="admin.ai.title" hidden>المساعد الذكي</button>
           <button type="button" data-admin-tab="logs" data-i18n="admin.logs">السجلات</button>
         </nav>
         <div class="admin-menu">
@@ -74,6 +74,12 @@
 
         <section class="admin-section is-active" data-admin-section="overview">
           <div class="admin-grid" id="adminStats"></div>
+          <div class="admin-panel" id="aiInsightsPanel" hidden>
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.ai.insights">رؤى اليوم</h2>
+            </div>
+            <ul class="ai-insights" id="aiInsights"></ul>
+          </div>
           <div class="admin-panel">
             <div class="admin-panel-header">
               <h2 data-i18n="admin.tasks.widgetTitle">المهام المفتوحة</h2>
@@ -1029,32 +1035,21 @@
         <section class="admin-section" data-admin-section="aiAssistant">
           <div class="admin-panel">
             <div class="admin-panel-header">
-              <h2>AI Assistant</h2>
-              <span class="badge">Live</span>
-            </div>
-            <form class="auth-form" id="aiAssistantForm" novalidate>
-              <div class="form-grid">
-                <div class="field full">
-                  <label for="aiPrompt">Ask about customers, revenue, renewals, retention, reports, or sales ideas</label>
-                  <textarea id="aiPrompt" name="prompt" required>Show today's revenue</textarea>
-                </div>
+              <h2 data-i18n="admin.ai.title">المساعد الذكي</h2>
+              <div class="inline-actions report-scope" id="aiScope" hidden>
+                <button class="btn small secondary is-active" type="button" data-ai-scope="branch" data-i18n="admin.rep.scopeBranch">هذا الفرع</button>
+                <button class="btn small secondary" type="button" data-ai-scope="all" data-i18n="admin.rep.scopeAll">موحّد (كل الفروع)</button>
               </div>
-              <button class="btn" type="submit">Ask</button>
-              <p class="form-message" id="aiAssistantMessage" aria-live="polite"></p>
+            </div>
+            <p class="muted" data-i18n="admin.ai.note">يجيب المساعد من بيانات هذا الفرع فقط ولا يستطيع تعديل أي شيء. الرسائل التي يكتبها مسودات للمراجعة.</p>
+            <div class="ai-examples" id="aiExamples"></div>
+            <div class="ai-thread" id="aiThread" aria-live="polite"></div>
+            <form class="ai-form" id="aiAssistantForm" novalidate>
+              <label class="sr-only" for="aiPrompt" data-i18n="admin.ai.ask">اسأل المساعد</label>
+              <textarea id="aiPrompt" name="prompt" rows="2" maxlength="2000" required data-i18n-placeholder="admin.ai.placeholder" placeholder="مثال: كم عضوية تنتهي هذا الأسبوع؟"></textarea>
+              <button class="btn" type="submit" id="aiSubmit" data-i18n="admin.ai.send">إرسال</button>
             </form>
-            <div class="ai-answer" id="aiAnswer"></div>
-          </div>
-          <div class="admin-panel">
-            <div class="admin-panel-header">
-              <h2>Smart Summary</h2>
-            </div>
-            <div class="admin-grid" id="smartMetricRows"></div>
-            <div class="table-shell">
-              <table class="table">
-                <thead><tr><th>Recommendation</th><th>Category</th><th>Priority</th></tr></thead>
-                <tbody id="aiRecommendationRows"></tbody>
-              </table>
-            </div>
+            <p class="form-message" id="aiAssistantMessage" aria-live="polite"></p>
           </div>
         </section>
 

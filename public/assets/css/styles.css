@@ -3147,3 +3147,87 @@ html[dir="rtl"] .hero::after {
 #memberNoteForm input {
   flex: 1 1 240px;
 }
+
+/* ---- Admin AI assistant ---- */
+.ai-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-block: 10px;
+}
+
+.ai-thread {
+  display: grid;
+  gap: 10px;
+  max-height: 460px;
+  overflow-y: auto;
+  margin-block: 12px;
+}
+
+.ai-msg {
+  max-width: 85%;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  line-height: 1.6;
+}
+
+.ai-msg-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ai-msg-user {
+  justify-self: end;
+  background: rgba(200, 168, 103, 0.18);
+}
+
+.ai-msg-assistant {
+  justify-self: start;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.ai-msg-meta {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-block-start: 8px;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.ai-form {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.ai-form textarea {
+  flex: 1 1 auto;
+  min-height: 52px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-white);
+  font: inherit;
+  resize: vertical;
+}
+
+.ai-insights {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ai-insight {
+  padding: 10px 12px;
+  border-inline-start: 4px solid var(--color-muted);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.ai-good { border-inline-start-color: #1f8a4c; }
+.ai-warn { border-inline-start-color: var(--color-red-strong); }
+.ai-info { border-inline-start-color: var(--color-gold); }
