@@ -662,19 +662,146 @@
           <div class="admin-panel">
             <div class="admin-panel-header">
               <h2 data-i18n="admin.payments">المدفوعات</h2>
+              <div class="inline-actions">
+                <button class="btn small secondary" type="button" data-export="payments" data-i18n="admin.fin.exportExcel">تصدير Excel</button>
+              </div>
+            </div>
+            <form class="member-filter" id="paymentFilterForm">
+              <input type="search" name="search" data-i18n-placeholder="admin.fin.searchPayments" placeholder="ابحث بالاسم أو رقم العضوية أو الجوال أو رقم الفاتورة">
+              <select name="status">
+                <option value="" data-i18n="admin.fin.anyStatus">كل الحالات</option>
+                <option value="completed" data-i18n="admin.fin.status.completed">مكتملة</option>
+                <option value="pending" data-i18n="admin.fin.status.pending">معلقة</option>
+                <option value="failed" data-i18n="admin.fin.status.failed">فاشلة</option>
+                <option value="cancelled" data-i18n="admin.fin.status.cancelled">ملغاة</option>
+                <option value="refunded" data-i18n="admin.fin.status.refunded">مستردة</option>
+              </select>
+              <select name="method">
+                <option value="" data-i18n="admin.fin.anyMethod">كل طرق الدفع</option>
+                <option value="moyasar" data-i18n="admin.fin.method.moyasar">إلكتروني (ميسر)</option>
+                <option value="cash" data-i18n="admin.fin.method.cash">نقدًا</option>
+                <option value="card" data-i18n="admin.fin.method.card">بطاقة (جهاز نقاط البيع)</option>
+                <option value="bank_transfer" data-i18n="admin.fin.method.bank_transfer">تحويل بنكي</option>
+              </select>
+              <input type="date" name="dateFrom" data-i18n-label="admin.fin.dateFrom" aria-label="من تاريخ">
+              <input type="date" name="dateTo" data-i18n-label="admin.fin.dateTo" aria-label="إلى تاريخ">
+              <button class="btn small secondary" type="submit" data-i18n="admin.tasks.search">بحث</button>
+            </form>
+            <p class="fin-summary" id="paymentSummary"></p>
+            <div class="table-shell">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th data-i18n="admin.fin.date">التاريخ</th>
+                    <th data-i18n="admin.fin.invoice">الفاتورة</th>
+                    <th data-i18n="table.member">العضو</th>
+                    <th data-i18n="admin.fin.item">البند</th>
+                    <th data-i18n="admin.fin.method">طريقة الدفع</th>
+                    <th data-i18n="table.amount">المبلغ</th>
+                    <th data-i18n="admin.fin.vat">الضريبة</th>
+                    <th data-i18n="table.status">الحالة</th>
+                  </tr>
+                </thead>
+                <tbody id="paymentRows"></tbody>
+              </table>
+            </div>
+            <div class="pager" id="paymentPager"></div>
+            <p class="form-message" id="paymentListMessage" role="status"></p>
+          </div>
+
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.fin.recordTitle">تسجيل دفعة في الاستقبال</h2>
+            </div>
+            <form class="auth-form" id="manualPaymentForm" novalidate>
+              <div class="form-grid">
+                <div class="field">
+                  <label for="manualPaymentMember" data-i18n="admin.fin.member">العضو (رقم العضوية أو الجوال أو البريد)</label>
+                  <div class="inline-actions">
+                    <input id="manualPaymentMember" type="search" autocomplete="off">
+                    <button class="btn small secondary" type="button" id="manualPaymentFind" data-i18n="admin.fin.find">بحث</button>
+                  </div>
+                  <select id="manualPaymentUser" name="userId" required>
+                    <option value="" data-i18n="admin.fin.pickMember">اختر عضوًا بعد البحث</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="manualPaymentPlan" data-i18n="admin.fin.plan">الباقة</label>
+                  <select id="manualPaymentPlan" name="planId" required></select>
+                </div>
+                <div class="field">
+                  <label for="manualPaymentMethod" data-i18n="admin.fin.method">طريقة الدفع</label>
+                  <select id="manualPaymentMethod" name="method" required>
+                    <option value="cash" data-i18n="admin.fin.method.cash">نقدًا</option>
+                    <option value="card" data-i18n="admin.fin.method.card">بطاقة (جهاز نقاط البيع)</option>
+                    <option value="bank_transfer" data-i18n="admin.fin.method.bank_transfer">تحويل بنكي</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="manualPaymentReference" data-i18n="admin.fin.reference">رقم الإيصال / المرجع (اختياري)</label>
+                  <input id="manualPaymentReference" name="reference" maxlength="190">
+                </div>
+              </div>
+              <button class="btn" type="submit" id="manualPaymentSubmit" data-i18n="admin.fin.recordSubmit">تسجيل الدفعة وإصدار الفاتورة</button>
+              <p class="form-message" id="manualPaymentMessage" role="status"></p>
+            </form>
+          </div>
+
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.fin.invoices">الفواتير الضريبية</h2>
+              <div class="inline-actions">
+                <button class="btn small secondary" type="button" data-export="invoices" data-i18n="admin.fin.exportExcel">تصدير Excel</button>
+              </div>
+            </div>
+            <form class="member-filter" id="invoiceFilterForm">
+              <input type="search" name="search" data-i18n-placeholder="admin.fin.searchInvoices" placeholder="ابحث برقم الفاتورة أو الاسم أو الجوال">
+              <select name="status">
+                <option value="" data-i18n="admin.fin.anyStatus">كل الحالات</option>
+                <option value="paid" data-i18n="admin.fin.inv.paid">مدفوعة</option>
+                <option value="pending" data-i18n="admin.fin.inv.pending">غير مدفوعة</option>
+                <option value="partial" data-i18n="admin.fin.inv.partial">مدفوعة جزئيًا</option>
+                <option value="cancelled" data-i18n="admin.fin.inv.cancelled">ملغاة</option>
+              </select>
+              <input type="date" name="dateFrom" data-i18n-label="admin.fin.dateFrom" aria-label="من تاريخ">
+              <input type="date" name="dateTo" data-i18n-label="admin.fin.dateTo" aria-label="إلى تاريخ">
+              <button class="btn small secondary" type="submit" data-i18n="admin.tasks.search">بحث</button>
+            </form>
+            <div class="table-shell">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th data-i18n="admin.fin.invoice">الفاتورة</th>
+                    <th data-i18n="admin.fin.date">التاريخ</th>
+                    <th data-i18n="admin.fin.buyer">المشتري</th>
+                    <th data-i18n="admin.fin.subtotal">قبل الضريبة</th>
+                    <th data-i18n="admin.fin.vat">الضريبة</th>
+                    <th data-i18n="table.amount">الإجمالي</th>
+                    <th data-i18n="table.status">الحالة</th>
+                    <th>PDF</th>
+                  </tr>
+                </thead>
+                <tbody id="invoiceRows"></tbody>
+              </table>
+            </div>
+            <div class="pager" id="invoicePager"></div>
+          </div>
+
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.fin.overdue">المبالغ المستحقة والمتأخرة</h2>
             </div>
             <div class="table-shell">
               <table class="table">
                 <thead>
                   <tr>
-                    <th>الرقم</th>
-                    <th data-i18n="table.member">العضو</th>
-                    <th data-i18n="table.amount">المبلغ</th>
-                    <th data-i18n="table.status">الحالة</th>
-                    <th data-i18n="table.date">التاريخ</th>
+                    <th data-i18n="admin.fin.invoice">الفاتورة</th>
+                    <th data-i18n="admin.fin.buyer">المشتري</th>
+                    <th data-i18n="admin.fin.dueDate">تاريخ الاستحقاق</th>
+                    <th data-i18n="admin.fin.balance">المتبقي</th>
                   </tr>
                 </thead>
-                <tbody id="paymentRows"></tbody>
+                <tbody id="overdueRows"></tbody>
               </table>
             </div>
           </div>

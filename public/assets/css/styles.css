@@ -2942,3 +2942,30 @@ html[dir="rtl"] .hero::after {
   color: inherit;
   border: 1px solid currentColor;
 }
+
+/* ---- Admin finance ---- */
+.admin-app .member-filter input[type="date"] {
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-white);
+  font: inherit;
+  color-scheme: dark;
+}
+
+.fin-summary {
+  margin: 0 0 12px;
+  color: var(--color-gold);
+  font-weight: 700;
+}
+
+#manualPaymentForm .inline-actions input {
+  flex: 1 1 200px;
+}
+
+#manualPaymentForm .field select + select,
+#manualPaymentForm .inline-actions + select {
+  margin-block-start: 8px;
+}

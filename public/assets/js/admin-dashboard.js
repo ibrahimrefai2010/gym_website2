@@ -1081,6 +1081,284 @@
   }
 
 
+  // Payments & invoicing (Part 2 §2.0.5). Every request is scoped server-side
+  // to the current branch (switcher header for super_admin, fixed home
+  // branch otherwise); the UI never sends a branch id itself.
+  function formFilters(form) {
+    return Object.fromEntries([...new FormData(form).entries()].filter(([, value]) => String(value).trim() !== ""));
+  }
+
+  function pagerHtml(data, attr) {
+    const page = data.pagination?.page || 1;
+    const total = data.pagination?.total || 0;
+    const pageSize = data.pagination?.pageSize || 20;
+    const pages = Math.max(Math.ceil(total / pageSize), 1);
+    if (pages <= 1) {
+      return "";
+    }
+    return `<button class="btn small secondary" type="button" ${attr}="${page - 1}" ${page <= 1 ? "disabled" : ""}>${escapeHtml(t("portal.prev"))}</button>
+      <span>${escapeHtml(t("portal.pageLabel").replace("{n}", page))} / ${pages}</span>
+      <button class="btn small secondary" type="button" ${attr}="${page + 1}" ${page >= pages ? "disabled" : ""}>${escapeHtml(t("portal.next"))}</button>`;
+  }
+
+  function finLabel(prefix, value) {
+    const key = `admin.fin.${prefix}.${value}`;
+    const label = t(key);
+    return label === key ? value || "—" : label;
+  }
+
+  function invoicePdfLink(id, number) {
+    return id
+      ? `<a href="/api/v1/invoices/${encodeURIComponent(id)}/pdf" target="_blank" rel="noopener">${escapeHtml(number || `#${id}`)}</a>`
+      : "—";
+  }
+
+  async function loadPayments(page = 1) {
+    const params = new URLSearchParams({ ...(state.paymentFilters || {}), page: String(page), pageSize: "20" });
+    try {
+      state.paymentsList = await window.GymApi.request(`/api/v1/payments?${params.toString()}`);
+    } catch (_error) {
+      state.paymentsList = null;
+    }
+    renderPaymentsList();
+  }
+
+  function renderPaymentsList() {
+    const data = state.paymentsList;
+    if (!data) {
+      return;
+    }
+    const items = data.items || [];
+    setHtml(
+      "#paymentSummary",
+      escapeHtml(
+        t("admin.fin.summary")
+          .replace("{count}", data.totals?.count || 0)
+          .replace("{total}", money(data.totals?.completed || 0, "SAR"))
+      )
+    );
+    setHtml(
+      "#paymentRows",
+      items.length
+        ? items
+            .map((row) => {
+              const item = row.plan_ar || row.plan_en ? `${row.plan_ar || row.plan_en}${row.purpose === "renewal" ? ` (${t("admin.fin.renewal")})` : ""}` : "—";
+              return `
+                <tr>
+                  <td>${escapeHtml(formatDate(row.created_at))}</td>
+                  <td>${invoicePdfLink(row.invoice_id, row.invoice_number)}</td>
+                  <td>${escapeHtml(row.member)}<br><small class="muted">${escapeHtml(row.member_code || "")}</small></td>
+                  <td>${escapeHtml(item)}</td>
+                  <td>${escapeHtml(finLabel("method", row.payment_method))}</td>
+                  <td>${escapeHtml(money(row.amount, row.currency))}</td>
+                  <td>${row.tax_total == null ? "—" : escapeHtml(money(row.tax_total, row.currency))}</td>
+                  <td>${escapeHtml(finLabel("status", row.status))}${row.failure_reason ? `<br><small class="muted">${escapeHtml(row.failure_reason)}</small>` : ""}</td>
+                </tr>`;
+            })
+            .join("")
+        : `<tr><td colspan="8">${escapeHtml(t("admin.fin.noPayments"))}</td></tr>`
+    );
+    setHtml("#paymentPager", pagerHtml(data, "data-payment-page"));
+  }
+
+  async function loadInvoices(page = 1) {
+    const params = new URLSearchParams({ ...(state.invoiceFilters || {}), page: String(page), pageSize: "20" });
+    try {
+      const [list, overdue] = await Promise.all([
+        window.GymApi.request(`/api/v1/invoices?${params.toString()}`),
+        page === 1 ? window.GymApi.request("/api/v1/invoices/overdue") : Promise.resolve(state.overdueInvoices)
+      ]);
+      state.invoicesList = list;
+      state.overdueInvoices = overdue;
+    } catch (_error) {
+      state.invoicesList = null;
+    }
+    renderInvoices();
+  }
+
+  function renderInvoices() {
+    const data = state.invoicesList;
+    if (!data) {
+      return;
+    }
+    const items = data.items || [];
+    setHtml(
+      "#invoiceRows",
+      items.length
+        ? items
+            .map(
+              (row) => `
+                <tr>
+                  <td>${escapeHtml(row.invoice_number)}</td>
+                  <td>${escapeHtml(formatDate(row.issued_at || row.issue_date))}</td>
+                  <td>${escapeHtml(row.customer)}</td>
+                  <td>${escapeHtml(money(row.subtotal, row.currency))}</td>
+                  <td>${escapeHtml(money(row.tax_total, row.currency))}</td>
+                  <td>${escapeHtml(money(row.total, row.currency))}</td>
+                  <td>${escapeHtml(finLabel("inv", row.status))}</td>
+                  <td><a class="btn small secondary" href="/api/v1/invoices/${encodeURIComponent(row.id)}/pdf" target="_blank" rel="noopener">PDF</a></td>
+                </tr>`
+            )
+            .join("")
+        : `<tr><td colspan="8">${escapeHtml(t("admin.fin.noInvoices"))}</td></tr>`
+    );
+    setHtml("#invoicePager", pagerHtml(data, "data-invoice-page"));
+
+    const overdue = state.overdueInvoices?.items || [];
+    setHtml(
+      "#overdueRows",
+      overdue.length
+        ? overdue
+            .map(
+              (row) => `
+                <tr>
+                  <td>${escapeHtml(row.invoice_number)}</td>
+                  <td>${escapeHtml(row.customer)}<br><small class="muted">${escapeHtml(row.phone || "")}</small></td>
+                  <td>${escapeHtml(formatDate(row.due_date || row.issue_date))}</td>
+                  <td>${escapeHtml(money(row.balance_due, row.currency))}</td>
+                </tr>`
+            )
+            .join("")
+        : `<tr><td colspan="4">${escapeHtml(t("admin.fin.noOverdue"))}</td></tr>`
+    );
+  }
+
+  function renderManualPaymentPlans() {
+    const select = document.querySelector("#manualPaymentPlan");
+    if (!select) {
+      return;
+    }
+    const plans = (state.plans || []).filter((plan) => plan.isActive !== false);
+    const previous = select.value;
+    select.innerHTML = plans
+      .map((plan) => `<option value="${escapeHtml(plan.id)}">${escapeHtml(`${planName(plan)} — ${money(plan.priceDiscounted ?? plan.price, plan.currency)}`)}</option>`)
+      .join("");
+    if (previous) {
+      select.value = previous;
+    }
+  }
+
+  function newSubmissionKey() {
+    return window.crypto?.randomUUID ? window.crypto.randomUUID() : `k${Date.now()}${Math.random().toString(36).slice(2)}`;
+  }
+
+  function setupFinance() {
+    state.manualPaymentKey = newSubmissionKey();
+
+    document.querySelector("#paymentFilterForm")?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      state.paymentFilters = formFilters(event.currentTarget);
+      loadPayments(1);
+    });
+    document.querySelector("#invoiceFilterForm")?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      state.invoiceFilters = formFilters(event.currentTarget);
+      loadInvoices(1);
+    });
+    document.querySelector("#paymentPager")?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-payment-page]");
+      if (button && !button.disabled) loadPayments(Number(button.dataset.paymentPage));
+    });
+    document.querySelector("#invoicePager")?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-invoice-page]");
+      if (button && !button.disabled) loadInvoices(Number(button.dataset.invoicePage));
+    });
+
+    document.querySelectorAll("[data-export]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const kind = button.dataset.export;
+        const filters = (kind === "payments" ? state.paymentFilters : kind === "invoices" ? state.invoiceFilters : state.exportFilters?.[kind]) || {};
+        const params = new URLSearchParams({ ...filters, lang: window.GymI18n.currentLang() });
+        const path = button.dataset.exportPath || `/api/v1/${kind}/export`;
+        const label = button.textContent;
+        button.disabled = true;
+        button.textContent = t("admin.exportRunning");
+        try {
+          await window.GymApi.download(`${path}?${params.toString()}`, `${kind}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+        } catch (error) {
+          window.alert(error.message || t("admin.exportFailed"));
+        } finally {
+          button.disabled = false;
+          button.textContent = label;
+        }
+      });
+    });
+
+    document.querySelector("#manualPaymentFind")?.addEventListener("click", async () => {
+      const term = document.querySelector("#manualPaymentMember")?.value.trim();
+      const select = document.querySelector("#manualPaymentUser");
+      if (!term || !select) {
+        return;
+      }
+      try {
+        const data = await window.GymApi.request(`/api/v1/customers?search=${encodeURIComponent(term)}&pageSize=10`);
+        const items = data.items || [];
+        select.innerHTML = items.length
+          ? items
+              .map((row) => `<option value="${escapeHtml(row.id)}">${escapeHtml([row.fullName, row.memberCode, row.phone].filter(Boolean).join(" · "))}</option>`)
+              .join("")
+          : `<option value="">${escapeHtml(t("admin.fin.noMembersFound"))}</option>`;
+      } catch (error) {
+        setMessage("#manualPaymentMessage", error.message, false);
+      }
+    });
+
+    document.querySelector("#manualPaymentForm")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const submit = document.querySelector("#manualPaymentSubmit");
+      if (submit.disabled) {
+        return;
+      }
+      const userSelect = document.querySelector("#manualPaymentUser");
+      const planSelect = document.querySelector("#manualPaymentPlan");
+      const methodSelect = document.querySelector("#manualPaymentMethod");
+      if (!userSelect.value || !planSelect.value) {
+        setMessage("#manualPaymentMessage", t("admin.fin.pickMemberAndPlan"), false);
+        return;
+      }
+      const branch = currentBranchLabel();
+      const prompt = t("admin.fin.confirmRecord")
+        .replace("{amount}", planSelect.selectedOptions[0]?.textContent || "")
+        .replace("{method}", methodSelect.selectedOptions[0]?.textContent || "")
+        .replace("{member}", userSelect.selectedOptions[0]?.textContent || "")
+        .replace("{branch}", branch ? localize(branch.name) : "");
+      if (!window.confirm(prompt)) {
+        return;
+      }
+      submit.disabled = true;
+      setMessage("#manualPaymentMessage", t("admin.fin.recording"), true);
+      try {
+        const result = await window.GymApi.request("/api/v1/payments/manual", {
+          method: "POST",
+          body: JSON.stringify({
+            userId: userSelect.value,
+            planId: planSelect.value,
+            method: methodSelect.value,
+            reference: document.querySelector("#manualPaymentReference")?.value || "",
+            idempotencyKey: state.manualPaymentKey
+          })
+        });
+        // New key only after a definitive answer -- a network retry of the
+        // same submission reuses the old key and gets the same payment back.
+        state.manualPaymentKey = newSubmissionKey();
+        setMessage(
+          "#manualPaymentMessage",
+          result.invoiceNumber ? t("admin.fin.recordedInvoice").replace("{number}", result.invoiceNumber) : t("admin.fin.recorded"),
+          true
+        );
+        form.reset();
+        userSelect.innerHTML = `<option value="">${escapeHtml(t("admin.fin.pickMember"))}</option>`;
+        loadPayments(1);
+        loadInvoices(1);
+      } catch (error) {
+        setMessage("#manualPaymentMessage", error.message || t("admin.fin.recordFailed"), false);
+      } finally {
+        submit.disabled = false;
+      }
+    });
+  }
+
   // Leads/CRM (Part 2): same on-demand, filtered + paginated pattern as
   // loadTasks above (replaces the old one-shot /api/v1/messages fetch inside
   // load()'s Promise.all, which returned a flat, unfiltered array of up to
@@ -1417,22 +1695,9 @@
   }
 
   function renderPayments() {
-    setHtml(
-      "#paymentRows",
-      (state.overview?.payments || [])
-        .map(
-          (payment) => `
-            <tr>
-              <td>${escapeHtml(payment.id)}</td>
-              <td>${escapeHtml(payment.member)}</td>
-              <td>${escapeHtml(payment.amount)}</td>
-              <td>${escapeHtml(statusLabel(payment.status))}</td>
-              <td>${formatDate(payment.date)}</td>
-            </tr>
-          `
-        )
-        .join("")
-    );
+    renderPaymentsList();
+    renderInvoices();
+    renderManualPaymentPlans();
   }
 
   function renderAdminAccounts() {
@@ -1744,6 +2009,8 @@
       loadMembers(1);
       loadTasks(1);
       loadCheckin();
+      loadPayments(1);
+      loadInvoices(1);
       // Leads/CRM (Part 2): loaded the same on-demand way as tasks -- see
       // loadMessages's own comment for why this moved out of the Promise.all
       // above.
@@ -2716,6 +2983,7 @@
     setupMembers();
     setupTasks();
     setupCheckin();
+    setupFinance();
     setupSession();
     setupBranchSwitcher();
     load();
