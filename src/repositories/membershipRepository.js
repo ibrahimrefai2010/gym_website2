@@ -89,10 +89,24 @@ async function getMembership(id) {
   return rows[0] || null;
 }
 
+// Shared "is this user's membership active" lookup -- used by buy() to
+// reject a duplicate purchase, and reused as-is by checkinService's
+// verifyAndCheckIn (see src/services/checkinService.js) rather than that
+// service reinventing this query. status = 'active' AND a not-yet-passed
+// end_date, not status alone -- the 'active' -> 'expired' flip only happens
+// when expireMemberships() runs (cron / another membership read), so a
+// membership can sit "active" in the DB past its own end_date until that
+// next runs. Checking end_date here too means a reception check-in never
+// treats a stale, un-expired-yet row as a valid entry.
 async function activeMembership(userId) {
   ensureDatabase();
   const rows = await query(
-    "SELECT id FROM memberships WHERE user_id = ? AND status = 'active' LIMIT 1",
+    `SELECT m.id, m.status, m.end_date, p.name_en AS plan_name_en, p.name_ar AS plan_name_ar
+     FROM memberships m
+     JOIN plans p ON p.id = m.plan_id
+     WHERE m.user_id = ? AND m.status = 'active' AND (m.end_date IS NULL OR m.end_date >= UTC_DATE())
+     ORDER BY COALESCE(m.end_date, m.created_at) DESC, m.id DESC
+     LIMIT 1`,
     [userId]
   );
   return rows[0] || null;
@@ -282,11 +296,27 @@ async function updateMembership(id, action) {
   return { id, action, updated: true };
 }
 
+// Latest non-pending membership regardless of status -- lets check-in tell
+// "expired" apart from "never had one" on the rejection screen.
+async function latestMembership(userId) {
+  ensureDatabase();
+  const rows = await query(
+    `SELECT id, status, end_date FROM memberships
+     WHERE user_id = ? AND status <> 'pending'
+     ORDER BY COALESCE(end_date, created_at) DESC, id DESC
+     LIMIT 1`,
+    [userId]
+  );
+  return rows[0] || null;
+}
+
 module.exports = {
   activateMembership,
+  activeMembership,
   buy,
   expireMemberships,
   getMembership,
+  latestMembership,
   getMine,
   listMemberships,
   maybeAutoActivate,
