@@ -219,6 +219,13 @@ async function createCustomer(payload, adminId = null) {
         ]
       );
       const userId = userResult.insertId;
+      // Member code + QR card token, same as self-registration
+      // (userRepository.createUser) -- admin-created members had neither.
+      await connection.execute(
+        `UPDATE users SET member_code = CONCAT('MFC-', LPAD(id, 6, '0')), card_token = REPLACE(UUID(), '-', '')
+         WHERE id = ? AND member_code IS NULL`,
+        [userId]
+      );
       await connection.execute(
         `INSERT INTO customer_profiles
           (user_id, branch_id, national_id, passport_number, residency_number, nationality, gender,

@@ -32,6 +32,7 @@ const searchRoutes = require("./routes/searchRoutes");
 const aiRoutes = require("./routes/aiRoutes");
 const taskRoutes = require("./routes/taskRoutes");
 const coachRoutes = require("./routes/coachRoutes");
+const dataTransferRoutes = require("./routes/dataTransferRoutes");
 
 const app = express();
 const publicDir = path.join(__dirname, "..", "public");
@@ -112,6 +113,8 @@ app.use(cors(corsOptions));
 app.use("/api/v1/payments/webhook", express.raw({ type: "application/json", limit: "100kb" }));
 app.use("/api/v1/admin/uploads/images", express.json({ limit: "6mb" }));
 app.use("/api/v1/user/avatar", express.json({ limit: "3mb" }));
+// Member import uploads (base64 xlsx/csv, max 2 MB raw).
+app.use("/api/v1/data/imports", express.json({ limit: "3mb" }));
 app.use(express.json({ limit: "10kb" }));
 app.use("/api/", generalLimiter);
 app.use("/api/v1/auth/login", loginLimiter);
@@ -153,6 +156,7 @@ app.use("/api/v1/search", searchRoutes);
 app.use("/api/v1/ai", aiRoutes);
 app.use("/api/v1/tasks", taskRoutes);
 app.use("/api/v1/coaches", coachRoutes);
+app.use("/api/v1/data", dataTransferRoutes);
 app.use("/api/v1", mediaRoutes);
 app.use("/api/v1/user", authenticate, memberRoutes);
 app.use("/api/v1/user", authenticate, userRoutes);
