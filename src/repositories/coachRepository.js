@@ -204,7 +204,9 @@ async function assignMember(coachId, userId, adminId = null) {
     throw createHttpError(404, "Member not found.", "CUSTOMER_NOT_FOUND");
   }
   if (Number(coach.branch_id) !== Number(user.branch_id)) {
-    throw createHttpError(422, "The coach and member must belong to the same branch.", "COACH_BRANCH_MISMATCH");
+    // Same 404 as a missing member: a member of another branch must not be
+    // distinguishable from one that does not exist.
+    throw createHttpError(404, "Member not found.", "CUSTOMER_NOT_FOUND");
   }
 
   const result = await query(
@@ -247,7 +249,22 @@ async function getMemberBranch(userId) {
   return { id: rows[0].id, branchId: Number(rows[0].branch_id) };
 }
 
+// Members currently assigned to a coach (admin coach detail view).
+async function listAssignedMembers(coachId) {
+  ensureDatabase();
+  return query(
+    `SELECT u.id, u.full_name, u.member_code, u.phone
+     FROM customer_profiles cp
+     JOIN users u ON u.id = cp.user_id AND u.deleted_at IS NULL
+     WHERE cp.coach_id = ?
+     ORDER BY u.full_name ASC
+     LIMIT 500`,
+    [coachId]
+  );
+}
+
 module.exports = {
+  listAssignedMembers,
   assignMember,
   deleteCoach,
   getCoach,

@@ -22,7 +22,8 @@ async function list(req, res) {
 async function detail(req, res) {
   const data = await coachRepository.getCoach(req.params.id);
   await assertBranchOwnership(data, req, coachNotFoundError());
-  res.json({ success: true, data });
+  const members = await coachRepository.listAssignedMembers(data.id);
+  res.json({ success: true, data: { ...data, members } });
 }
 
 async function create(req, res) {
