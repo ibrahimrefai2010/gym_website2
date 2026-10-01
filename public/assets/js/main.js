@@ -163,6 +163,50 @@
     observeReveals();
   }
 
+  // Coaches of the resolved branch only (the bootstrap is branch-scoped by
+  // subdomain); hidden coaches never reach the public payload.
+  function renderCoaches() {
+    const root = document.querySelector("#coachesGrid");
+    if (!root) {
+      return;
+    }
+    const coaches = state.data.coaches || [];
+    if (!coaches.length) {
+      root.innerHTML = `<p class="coaches-empty">${escapeHtml(t("coaches.empty"))}</p>`;
+      return;
+    }
+    root.innerHTML = coaches
+      .map((coach) => {
+        const name = localize(coach.name);
+        const bio = localize(coach.bio);
+        const certs = localize(coach.certifications);
+        const initials = String(name || "").trim().split(/\s+/).slice(0, 2).map((part) => part[0] || "").join("");
+        return `
+          <article class="coach-card reveal">
+            ${
+              coach.photoUrl
+                ? `<img class="coach-photo" src="${escapeHtml(coach.photoUrl)}" alt="${escapeHtml(name)}" loading="lazy" width="320" height="320">`
+                : `<div class="coach-photo coach-initials" aria-hidden="true">${escapeHtml(initials)}</div>`
+            }
+            <div class="coach-body">
+              <h3>${escapeHtml(name)}</h3>
+              ${localize(coach.specialty) ? `<p class="coach-specialty">${escapeHtml(localize(coach.specialty))}</p>` : ""}
+              ${coach.yearsExperience ? `<p class="coach-years">${escapeHtml(t("coaches.years", { n: coach.yearsExperience }))}</p>` : ""}
+              ${
+                bio || certs
+                  ? `<details class="coach-more"><summary>${escapeHtml(t("coaches.more"))}</summary>
+                      ${bio ? `<p>${escapeHtml(bio)}</p>` : ""}
+                      ${certs ? `<p><strong>${escapeHtml(t("coaches.certs"))}:</strong> ${escapeHtml(certs)}</p>` : ""}
+                    </details>`
+                  : ""
+              }
+            </div>
+          </article>`;
+      })
+      .join("");
+    observeReveals();
+  }
+
   function renderOffers() {
     const root = document.querySelector("#offerList");
     if (!root) {
@@ -585,6 +629,7 @@
     renderHomepageCopy();
     renderMetrics();
     renderPlans();
+    renderCoaches();
     renderOffers();
     renderSlides();
     renderFaqs();

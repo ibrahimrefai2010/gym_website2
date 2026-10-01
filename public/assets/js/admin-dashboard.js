@@ -1629,6 +1629,232 @@
     });
   }
 
+  // Coaches (Part 2 §2.0.2). Branch-scoped server-side; feeds the public
+  // coaches section on the branch's own site.
+  async function loadCoaches() {
+    try {
+      state.coaches = await window.GymApi.request("/api/v1/coaches?includeInactive=true");
+    } catch (_error) {
+      state.coaches = null;
+    }
+    renderCoaches();
+  }
+
+  function renderCoaches() {
+    if (!state.coaches) {
+      return;
+    }
+    const rows = state.coaches;
+    setHtml(
+      "#coachRows",
+      rows.length
+        ? rows
+            .map(
+              (coach) => `
+                <tr>
+                  <td>${coach.photoUrl ? `<img class="table-image" src="${escapeHtml(coach.photoUrl)}" alt="" loading="lazy">` : `<span class="image-empty">—</span>`}</td>
+                  <td>${escapeHtml(localize(coach.name))}<br><small class="muted">${escapeHtml(coach.name.en)}</small></td>
+                  <td>${escapeHtml(localize(coach.specialty))}</td>
+                  <td>${escapeHtml(coach.yearsExperience)}</td>
+                  <td>${escapeHtml(coach.assignedMemberCount ?? 0)}</td>
+                  <td>${escapeHtml(coach.displayOrder)}</td>
+                  <td>${escapeHtml(coach.isActive ? t("admin.coach.active") : t("admin.coach.hidden"))}</td>
+                  <td>
+                    <div class="row-actions">
+                      <button class="btn small secondary" type="button" data-coach-action="edit" data-coach-id="${escapeHtml(coach.id)}">${escapeHtml(t("admin.tasks.edit"))}</button>
+                      <button class="btn small danger" type="button" data-coach-action="delete" data-coach-id="${escapeHtml(coach.id)}">${escapeHtml(t("admin.coach.delete"))}</button>
+                    </div>
+                  </td>
+                </tr>`
+            )
+            .join("")
+        : `<tr><td colspan="8">${escapeHtml(t("admin.coach.none"))}</td></tr>`
+    );
+    const assignSelect = document.querySelector("#coachAssignCoach");
+    if (assignSelect) {
+      const previous = assignSelect.value;
+      assignSelect.innerHTML = rows
+        .filter((coach) => coach.isActive)
+        .map((coach) => `<option value="${escapeHtml(coach.id)}">${escapeHtml(localize(coach.name))}</option>`)
+        .join("");
+      if (previous) assignSelect.value = previous;
+    }
+  }
+
+  function fillCoachForm(coach) {
+    const form = document.querySelector("#coachForm");
+    if (!form) return;
+    form.reset();
+    form.elements.id.value = coach?.id || "";
+    const set = (name, value) => {
+      if (form.elements[name]) form.elements[name].value = value ?? "";
+    };
+    set("nameAr", coach?.name?.ar);
+    set("nameEn", coach?.name?.en);
+    set("specialtyAr", coach?.specialty?.ar);
+    set("specialtyEn", coach?.specialty?.en);
+    set("bioAr", coach?.bio?.ar);
+    set("bioEn", coach?.bio?.en);
+    set("certificationsAr", coach?.certifications?.ar);
+    set("certificationsEn", coach?.certifications?.en);
+    set("yearsExperience", coach?.yearsExperience ?? 0);
+    set("displayOrder", coach?.displayOrder ?? 0);
+    set("photoUrl", coach?.photoUrl);
+    form.elements.isActive.checked = coach ? coach.isActive : true;
+    const preview = document.querySelector("#coachPhotoPreview");
+    if (preview) preview.innerHTML = coach?.photoUrl ? `<img class="table-image" src="${escapeHtml(coach.photoUrl)}" alt="">` : "";
+    const title = document.querySelector("#coachFormTitle");
+    if (title) title.textContent = t(coach ? "admin.coach.editTitle" : "admin.coach.newTitle");
+    setHtml(
+      "#coachMembers",
+      coach?.members?.length
+        ? `<p class="portal-section-title">${escapeHtml(t("admin.coach.assignedMembers"))}</p><ul class="coach-members">${coach.members
+            .map(
+              (m) => `<li>${escapeHtml([m.full_name, m.member_code].filter(Boolean).join(" · "))}
+                <button class="btn small secondary" type="button" data-coach-unassign="${escapeHtml(m.id)}">${escapeHtml(t("admin.coach.unassign"))}</button></li>`
+            )
+            .join("")}</ul>`
+        : ""
+    );
+  }
+
+  function setupCoaches() {
+    const form = document.querySelector("#coachForm");
+    document.querySelector("#coachNew")?.addEventListener("click", () => fillCoachForm(null));
+
+    document.querySelector("#coachPhotoFile")?.addEventListener("change", async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      setMessage("#coachMessage", t("admin.coach.uploading"), true);
+      try {
+        const uploaded = await uploadImage(file, { maxSide: 800 });
+        const url = uploaded.url || uploaded.imageUrl;
+        form.elements.photoUrl.value = url;
+        setHtml("#coachPhotoPreview", `<img class="table-image" src="${escapeHtml(url)}" alt="">`);
+        setMessage("#coachMessage", "", true);
+      } catch (error) {
+        setMessage("#coachMessage", error.message, false);
+      }
+    });
+
+    form?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const submit = form.querySelector('button[type="submit"]');
+      if (submit.disabled) return;
+      const values = Object.fromEntries(new FormData(form).entries());
+      const id = values.id;
+      const body = {
+        nameAr: values.nameAr,
+        nameEn: values.nameEn,
+        specialtyAr: values.specialtyAr,
+        specialtyEn: values.specialtyEn,
+        bioAr: values.bioAr,
+        bioEn: values.bioEn,
+        certificationsAr: values.certificationsAr,
+        certificationsEn: values.certificationsEn,
+        yearsExperience: Number(values.yearsExperience || 0),
+        displayOrder: Number(values.displayOrder || 0),
+        photoUrl: values.photoUrl || null,
+        isActive: form.elements.isActive.checked
+      };
+      if (!body.nameAr || !body.nameEn) {
+        setMessage("#coachMessage", t("admin.coach.nameRequired"), false);
+        return;
+      }
+      submit.disabled = true;
+      try {
+        await window.GymApi.request(id ? `/api/v1/coaches/${encodeURIComponent(id)}` : "/api/v1/coaches", {
+          method: id ? "PUT" : "POST",
+          body: JSON.stringify(body)
+        });
+        setMessage("#coachMessage", t("admin.coach.saved"), true);
+        fillCoachForm(null);
+        loadCoaches();
+      } catch (error) {
+        setMessage("#coachMessage", error.message, false);
+      } finally {
+        submit.disabled = false;
+      }
+    });
+
+    document.querySelector("#coachRows")?.addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-coach-action]");
+      if (!button) return;
+      const id = button.dataset.coachId;
+      if (button.dataset.coachAction === "edit") {
+        try {
+          fillCoachForm(await window.GymApi.request(`/api/v1/coaches/${encodeURIComponent(id)}`));
+          document.querySelector("#coachForm")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        } catch (error) {
+          setMessage("#coachMessage", error.message, false);
+        }
+        return;
+      }
+      const coach = (state.coaches || []).find((row) => String(row.id) === String(id));
+      const branch = currentBranchLabel();
+      const prompt = t("admin.coach.confirmDelete")
+        .replace("{name}", coach ? localize(coach.name) : "")
+        .replace("{branch}", branch ? localize(branch.name) : "");
+      if (!window.confirm(prompt)) return;
+      button.disabled = true;
+      try {
+        await window.GymApi.request(`/api/v1/coaches/${encodeURIComponent(id)}`, { method: "DELETE" });
+        loadCoaches();
+      } catch (error) {
+        button.disabled = false;
+        setMessage("#coachMessage", error.message, false);
+      }
+    });
+
+    document.querySelector("#coachMembers")?.addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-coach-unassign]");
+      if (!button) return;
+      button.disabled = true;
+      try {
+        await window.GymApi.request(`/api/v1/coaches/members/${encodeURIComponent(button.dataset.coachUnassign)}/assignment`, { method: "DELETE" });
+        button.closest("li")?.remove();
+        loadCoaches();
+      } catch (error) {
+        button.disabled = false;
+        setMessage("#coachMessage", error.message, false);
+      }
+    });
+
+    document.querySelector("#coachAssignFind")?.addEventListener("click", async () => {
+      const term = document.querySelector("#coachAssignSearch")?.value.trim();
+      const select = document.querySelector("#coachAssignMember");
+      if (!term || !select) return;
+      try {
+        const data = await window.GymApi.request(`/api/v1/customers?search=${encodeURIComponent(term)}&pageSize=10`);
+        const items = data.items || [];
+        select.innerHTML = items.length
+          ? items.map((row) => `<option value="${escapeHtml(row.id)}">${escapeHtml([row.fullName, row.memberCode, row.phone].filter(Boolean).join(" · "))}</option>`).join("")
+          : `<option value="">${escapeHtml(t("admin.fin.noMembersFound"))}</option>`;
+      } catch (error) {
+        setMessage("#coachAssignMessage", error.message, false);
+      }
+    });
+
+    document.querySelector("#coachAssignForm")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const coachId = document.querySelector("#coachAssignCoach")?.value;
+      const userId = document.querySelector("#coachAssignMember")?.value;
+      if (!coachId || !userId) {
+        setMessage("#coachAssignMessage", t("admin.coach.pickBoth"), false);
+        return;
+      }
+      try {
+        await window.GymApi.request(`/api/v1/coaches/${encodeURIComponent(coachId)}/assign`, { method: "POST", body: JSON.stringify({ userId }) });
+        setMessage("#coachAssignMessage", t("admin.coach.assigned"), true);
+        loadCoaches();
+      } catch (error) {
+        setMessage("#coachAssignMessage", error.message, false);
+      }
+    });
+
+    document.querySelector('[data-admin-tab="coaches"]')?.addEventListener("click", () => loadCoaches());
+  }
+
   // Leads/CRM (Part 2): same on-demand, filtered + paginated pattern as
   // loadTasks above (replaces the old one-shot /api/v1/messages fetch inside
   // load()'s Promise.all, which returned a flat, unfiltered array of up to
@@ -2337,8 +2563,35 @@
     });
   }
 
-  async function uploadImage(file) {
-    const dataUrl = await fileToDataUrl(file);
+  // Every admin image upload is resized (longest side <= maxSide) and
+  // re-encoded as WebP in the browser before it is sent -- no native image
+  // library on the server. GIFs (animation) and files the browser cannot
+  // decode are sent as-is; the server still validates type and size.
+  async function compressImage(file, maxSide = 1600, quality = 0.82) {
+    if (!/^image\/(png|jpe?g|webp)$/i.test(file.type)) {
+      return { dataUrl: await fileToDataUrl(file), fileName: file.name };
+    }
+    try {
+      const bitmap = await createImageBitmap(file);
+      const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(bitmap.width * scale);
+      canvas.height = Math.round(bitmap.height * scale);
+      canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL("image/webp", quality);
+      if (!dataUrl.startsWith("data:image/webp")) {
+        return { dataUrl: await fileToDataUrl(file), fileName: file.name };
+      }
+      return { dataUrl, fileName: file.name.replace(/\.[^.]+$/, "") + ".webp" };
+    } catch (_error) {
+      return { dataUrl: await fileToDataUrl(file), fileName: file.name };
+    }
+  }
+
+  async function uploadImage(file, options = {}) {
+    const compressed = await compressImage(file, options.maxSide);
+    const dataUrl = compressed.dataUrl;
+    file = { name: compressed.fileName };
     return window.GymApi.request("/api/v1/admin/uploads/images", {
       method: "POST",
       body: JSON.stringify({
@@ -3255,6 +3508,7 @@
     setupCheckin();
     setupFinance();
     setupReports();
+    setupCoaches();
     setupSession();
     setupBranchSwitcher();
     load();

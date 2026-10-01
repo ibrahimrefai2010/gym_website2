@@ -38,6 +38,7 @@
           <button type="button" data-admin-tab="messages" data-i18n="admin.messages">الرسائل</button>
           <button type="button" data-admin-tab="tasks" data-i18n="admin.tasks">المهام</button>
           <button type="button" data-admin-tab="checkin" data-i18n="admin.checkin">الاستقبال وتسجيل الدخول</button>
+          <button type="button" data-admin-tab="coaches" data-i18n="admin.coach.title">المدربون</button>
           <button type="button" data-admin-tab="announce" data-i18n="admin.announce">الإشعارات والإعلانات</button>
           <button type="button" data-admin-tab="settings" data-i18n="admin.settings">الإعدادات</button>
           <button type="button" data-admin-tab="payments" data-i18n="admin.payments">المدفوعات</button>
@@ -1074,6 +1075,91 @@
               <h2 data-i18n="admin.checkin.heatmapTitle">أوقات الذروة (آخر 90 يومًا)</h2>
             </div>
             <div class="checkin-heatmap" id="checkinHeatmap"></div>
+          </div>
+        </section>
+
+        <section class="admin-section" data-admin-section="coaches">
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.coach.title">المدربون</h2>
+              <div class="inline-actions">
+                <button class="btn small secondary" type="button" id="coachNew" data-i18n="admin.coach.add">إضافة مدرب</button>
+              </div>
+            </div>
+            <div class="table-shell">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th data-i18n="admin.coach.photo">الصورة</th>
+                    <th data-i18n="admin.coach.name">الاسم</th>
+                    <th data-i18n="admin.coach.specialty">التخصص</th>
+                    <th data-i18n="admin.coach.years">سنوات الخبرة</th>
+                    <th data-i18n="admin.coach.members">الأعضاء</th>
+                    <th data-i18n="admin.coach.order">الترتيب</th>
+                    <th data-i18n="table.status">الحالة</th>
+                    <th data-i18n="admin.tasks.actionsCol">الإجراءات</th>
+                  </tr>
+                </thead>
+                <tbody id="coachRows"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 id="coachFormTitle" data-i18n="admin.coach.newTitle">مدرب جديد</h2>
+            </div>
+            <form class="auth-form" id="coachForm" novalidate>
+              <input type="hidden" name="id">
+              <input type="hidden" name="photoUrl">
+              <div class="form-grid">
+                <div class="field"><label for="coachNameAr" data-i18n="admin.coach.nameAr">الاسم (عربي)</label><input id="coachNameAr" name="nameAr" required maxlength="160" dir="rtl"></div>
+                <div class="field"><label for="coachNameEn" data-i18n="admin.coach.nameEn">الاسم (إنجليزي)</label><input id="coachNameEn" name="nameEn" required maxlength="160" dir="ltr"></div>
+                <div class="field"><label for="coachSpecialtyAr" data-i18n="admin.coach.specialtyAr">التخصص (عربي)</label><input id="coachSpecialtyAr" name="specialtyAr" maxlength="200" dir="rtl"></div>
+                <div class="field"><label for="coachSpecialtyEn" data-i18n="admin.coach.specialtyEn">التخصص (إنجليزي)</label><input id="coachSpecialtyEn" name="specialtyEn" maxlength="200" dir="ltr"></div>
+                <div class="field"><label for="coachBioAr" data-i18n="admin.coach.bioAr">نبذة (عربي)</label><textarea id="coachBioAr" name="bioAr" rows="3" dir="rtl"></textarea></div>
+                <div class="field"><label for="coachBioEn" data-i18n="admin.coach.bioEn">نبذة (إنجليزي)</label><textarea id="coachBioEn" name="bioEn" rows="3" dir="ltr"></textarea></div>
+                <div class="field"><label for="coachCertAr" data-i18n="admin.coach.certAr">الشهادات (عربي)</label><textarea id="coachCertAr" name="certificationsAr" rows="2" dir="rtl"></textarea></div>
+                <div class="field"><label for="coachCertEn" data-i18n="admin.coach.certEn">الشهادات (إنجليزي)</label><textarea id="coachCertEn" name="certificationsEn" rows="2" dir="ltr"></textarea></div>
+                <div class="field"><label for="coachYears" data-i18n="admin.coach.years">سنوات الخبرة</label><input id="coachYears" name="yearsExperience" type="number" min="0" max="60" value="0"></div>
+                <div class="field"><label for="coachOrder" data-i18n="admin.coach.order">الترتيب</label><input id="coachOrder" name="displayOrder" type="number" min="0" max="999" value="0"></div>
+                <div class="field">
+                  <label for="coachPhotoFile" data-i18n="admin.coach.photo">الصورة</label>
+                  <input id="coachPhotoFile" type="file" accept="image/png,image/jpeg,image/webp">
+                  <div id="coachPhotoPreview"></div>
+                </div>
+                <div class="field">
+                  <label class="permission-check"><input type="checkbox" name="isActive" checked> <span data-i18n="admin.coach.showPublic">يظهر في موقع الفرع</span></label>
+                </div>
+              </div>
+              <div id="coachMembers"></div>
+              <button class="btn" type="submit" data-i18n="admin.coach.save">حفظ المدرب</button>
+              <p class="form-message" id="coachMessage" role="status"></p>
+            </form>
+          </div>
+
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.coach.assignTitle">إسناد عضو إلى مدرب</h2>
+            </div>
+            <form class="auth-form" id="coachAssignForm" novalidate>
+              <div class="form-grid">
+                <div class="field">
+                  <label for="coachAssignSearch" data-i18n="admin.fin.member">العضو (رقم العضوية أو الجوال أو البريد)</label>
+                  <div class="inline-actions">
+                    <input id="coachAssignSearch" type="search" autocomplete="off">
+                    <button class="btn small secondary" type="button" id="coachAssignFind" data-i18n="admin.fin.find">بحث</button>
+                  </div>
+                  <select id="coachAssignMember"><option value="" data-i18n="admin.fin.pickMember">ابحث ثم اختر العضو</option></select>
+                </div>
+                <div class="field">
+                  <label for="coachAssignCoach" data-i18n="admin.coach.title">المدربون</label>
+                  <select id="coachAssignCoach"></select>
+                </div>
+              </div>
+              <button class="btn" type="submit" data-i18n="admin.coach.assign">إسناد</button>
+              <p class="form-message" id="coachAssignMessage" role="status"></p>
+            </form>
           </div>
         </section>
 

@@ -3015,3 +3015,90 @@ html[dir="rtl"] .hero::after {
   font-size: 10px;
   color: var(--color-muted);
 }
+
+/* ---- Public coaches ---- */
+.coaches-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 20px;
+}
+
+.coach-card {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  overflow: hidden;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md, 12px);
+  background: var(--color-white);
+}
+
+.coach-photo {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  background: var(--color-soft);
+}
+
+.coach-initials {
+  display: grid;
+  place-items: center;
+  font-size: 48px;
+  font-weight: 800;
+  color: var(--color-gold);
+  background: var(--color-ink);
+}
+
+.coach-body {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 16px;
+}
+
+.coach-body h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.coach-specialty {
+  margin: 0;
+  color: var(--color-red-strong);
+  font-weight: 700;
+}
+
+.coach-years {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-muted);
+}
+
+.coach-more summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.coach-more p {
+  margin: 8px 0 0;
+  color: var(--color-graphite);
+  line-height: 1.6;
+}
+
+.coaches-empty {
+  text-align: center;
+  color: var(--color-muted);
+}
+
+.coach-members {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.coach-members li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
