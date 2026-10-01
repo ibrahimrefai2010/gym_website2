@@ -40,6 +40,8 @@ async function listAttendance({ page = 1, pageSize = 25, branchId = "", userId =
     where.push("a.check_in_at <= ?");
     params.push(`${dateTo} 23:59:59`);
   }
+  // Bounded server-computed integers, interpolated: mysql2 prepared
+  // statements reject LIMIT ? (ER_WRONG_ARGUMENTS).
   const limit = positiveInteger(pageSize, 25, 100);
   const currentPage = positiveInteger(page, 1, 1000000);
   const offset = (currentPage - 1) * limit;
@@ -50,8 +52,8 @@ async function listAttendance({ page = 1, pageSize = 25, branchId = "", userId =
      LEFT JOIN branches b ON b.id = a.branch_id
      WHERE ${where.join(" AND ")}
      ORDER BY a.check_in_at DESC
-     LIMIT ? OFFSET ?`,
-    [...params, limit, offset]
+     LIMIT ${limit} OFFSET ${offset}`,
+    params
   );
   const totalRows = await query(`SELECT COUNT(*) AS total FROM attendance_logs a WHERE ${where.join(" AND ")}`, params);
   return {

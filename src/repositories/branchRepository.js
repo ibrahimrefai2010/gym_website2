@@ -37,6 +37,8 @@ async function listBranches({ search = "", status = "", page = 1, pageSize = 50 
     params.push(status);
   }
 
+  // limit/offset are bounded server-computed integers -- interpolated, not
+  // bound: mysql2 prepared statements reject LIMIT ? (ER_WRONG_ARGUMENTS).
   const limit = positiveInteger(pageSize, 50, 100);
   const currentPage = positiveInteger(page, 1, 1000000);
   const offset = (currentPage - 1) * limit;
@@ -46,8 +48,8 @@ async function listBranches({ search = "", status = "", page = 1, pageSize = 50 
      LEFT JOIN admin_users au ON au.id = b.manager_id
      WHERE ${where.join(" AND ")}
      ORDER BY b.status ASC, b.name_en ASC
-     LIMIT ? OFFSET ?`,
-    [...params, limit, offset]
+     LIMIT ${limit} OFFSET ${offset}`,
+    params
   );
   const totalRows = await query(`SELECT COUNT(*) AS total FROM branches b WHERE ${where.join(" AND ")}`, params);
   return {

@@ -41,6 +41,8 @@ async function listDocuments({ ownerType = "", ownerId = "", category = "", page
     where.push("category = ?");
     params.push(category);
   }
+  // Bounded server-computed integers, interpolated: mysql2 prepared
+  // statements reject LIMIT ? (ER_WRONG_ARGUMENTS).
   const limit = positiveInteger(pageSize, 25, 100);
   const currentPage = positiveInteger(page, 1, 1000000);
   const offset = (currentPage - 1) * limit;
@@ -50,8 +52,8 @@ async function listDocuments({ ownerType = "", ownerId = "", category = "", page
      FROM documents
      WHERE ${where.join(" AND ")}
      ORDER BY created_at DESC
-     LIMIT ? OFFSET ?`,
-    [...params, limit, offset]
+     LIMIT ${limit} OFFSET ${offset}`,
+    params
   );
   const totalRows = await query(`SELECT COUNT(*) AS total FROM documents WHERE ${where.join(" AND ")}`, params);
   return {

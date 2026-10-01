@@ -39,6 +39,8 @@ async function listExpenses({ page = 1, pageSize = 25, branchId = "", categoryId
     where.push("e.expense_date <= ?");
     params.push(dateTo);
   }
+  // Bounded server-computed integers, interpolated: mysql2 prepared
+  // statements reject LIMIT ? (ER_WRONG_ARGUMENTS).
   const limit = positiveInteger(pageSize, 25, 100);
   const currentPage = positiveInteger(page, 1, 1000000);
   const offset = (currentPage - 1) * limit;
@@ -49,8 +51,8 @@ async function listExpenses({ page = 1, pageSize = 25, branchId = "", categoryId
      LEFT JOIN branches b ON b.id = e.branch_id
      WHERE ${where.join(" AND ")}
      ORDER BY e.expense_date DESC, e.id DESC
-     LIMIT ? OFFSET ?`,
-    [...params, limit, offset]
+     LIMIT ${limit} OFFSET ${offset}`,
+    params
   );
   const totalRows = await query(`SELECT COUNT(*) AS total FROM expenses e WHERE ${where.join(" AND ")}`, params);
   return {
@@ -124,7 +126,15 @@ async function updateExpense(id, payload, adminId = null) {
   return { id: Number(id), updated: true };
 }
 
+// For by-id ownership checks (expenseController.update).
+async function getExpenseBranch(id) {
+  ensureDatabase();
+  const rows = await query("SELECT id, branch_id FROM expenses WHERE id = ? AND deleted_at IS NULL LIMIT 1", [id]);
+  return rows[0] || null;
+}
+
 module.exports = {
+  getExpenseBranch,
   createExpense,
   listCategories,
   listExpenses,
