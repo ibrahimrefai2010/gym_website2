@@ -328,8 +328,141 @@ async function maybeAutoActivate(membershipId, adminId = null) {
   return activateMembership(membershipId, adminId);
 }
 
-async function updateMembership(id, action) {
+
+// ---- Admin membership actions (Part 2 §2.0.1) ------------------------------
+// All three lock the membership row and write in one transaction.
+
+const MAX_ACTION_DAYS = 365;
+
+function actionDays(value, label) {
+  const days = Number.parseInt(value, 10);
+  if (!Number.isInteger(days) || days < 1 || days > MAX_ACTION_DAYS) {
+    throw createHttpError(422, `${label} must be between 1 and ${MAX_ACTION_DAYS} days.`, "MEMBERSHIP_DAYS_INVALID");
+  }
+  return days;
+}
+
+function actionReason(value) {
+  const reason = String(value || "").trim().slice(0, 255);
+  if (reason.length < 3) {
+    throw createHttpError(422, "A reason is required.", "MEMBERSHIP_REASON_REQUIRED");
+  }
+  return reason;
+}
+
+async function lockActiveMembership(connection, membershipId) {
+  const [rows] = await connection.execute(
+    "SELECT id, user_id, branch_id, status, end_date FROM memberships WHERE id = ? LIMIT 1 FOR UPDATE",
+    [membershipId]
+  );
+  const membership = rows[0];
+  if (!membership) {
+    throw createHttpError(404, "Membership not found.", "MEMBERSHIP_NOT_FOUND");
+  }
+  if (membership.status !== "active" || !membership.end_date || dateOnly(new Date(membership.end_date)) < dateOnly(new Date())) {
+    throw createHttpError(409, "Only an active membership can be changed this way.", "MEMBERSHIP_NOT_ACTIVE");
+  }
+  return membership;
+}
+
+// Freeze from today for `days`: the member cannot check in while frozen and
+// the frozen days are added to the end date, so no paid days are lost.
+async function freezeMembership(membershipId, { days, reason }, adminId) {
   ensureDatabase();
+  const freezeDays = actionDays(days, "Freeze length");
+  const why = actionReason(reason);
+  return transaction(async (connection) => {
+    const membership = await lockActiveMembership(connection, membershipId);
+    const [open] = await connection.execute(
+      "SELECT id FROM membership_freezes WHERE membership_id = ? AND status IN ('scheduled','active') AND deleted_at IS NULL LIMIT 1",
+      [membershipId]
+    );
+    if (open[0]) {
+      throw createHttpError(409, "This membership is already frozen.", "MEMBERSHIP_ALREADY_FROZEN");
+    }
+    const today = dateOnly(new Date());
+    const endsOn = addDays(today, freezeDays - 1);
+    const newEnd = addDays(dateOnly(new Date(membership.end_date)), freezeDays);
+    await connection.execute(
+      `INSERT INTO membership_freezes
+        (branch_id, membership_id, user_id, freeze_type, reason, starts_on, ends_on, extension_days, status, approved_by, created_by, updated_by)
+       VALUES (?, ?, ?, 'individual', ?, ?, ?, ?, 'active', ?, ?, ?)`,
+      [membership.branch_id, membership.id, membership.user_id, why, today, endsOn, freezeDays, adminId, adminId, adminId]
+    );
+    await connection.execute("UPDATE memberships SET end_date = ?, updated_by = ?, updated_at = UTC_TIMESTAMP() WHERE id = ?", [newEnd, adminId, membership.id]);
+    return { id: membership.id, action: "freeze", frozenUntil: endsOn, endDate: newEnd };
+  });
+}
+
+// End a freeze early: the unused frozen days come back off the end date.
+async function unfreezeMembership(membershipId, adminId) {
+  ensureDatabase();
+  return transaction(async (connection) => {
+    const membership = await lockActiveMembership(connection, membershipId);
+    const [rows] = await connection.execute(
+      "SELECT id, starts_on, ends_on FROM membership_freezes WHERE membership_id = ? AND status = 'active' AND deleted_at IS NULL LIMIT 1 FOR UPDATE",
+      [membershipId]
+    );
+    const freeze = rows[0];
+    if (!freeze) {
+      throw createHttpError(409, "This membership is not frozen.", "MEMBERSHIP_NOT_FROZEN");
+    }
+    const today = dateOnly(new Date());
+    const endsOn = dateOnly(new Date(freeze.ends_on));
+    const unused = Math.max(0, Math.round((new Date(`${endsOn}T00:00:00Z`) - new Date(`${today}T00:00:00Z`)) / 86400000));
+    const newEnd = addDays(dateOnly(new Date(membership.end_date)), -unused);
+    await connection.execute(
+      `UPDATE membership_freezes SET status = 'completed', ends_on = ?, extension_days = GREATEST(extension_days - ?, 0),
+         updated_by = ?, updated_at = UTC_TIMESTAMP() WHERE id = ?`,
+      [addDays(today, -1) < dateOnly(new Date(freeze.starts_on)) ? dateOnly(new Date(freeze.starts_on)) : addDays(today, -1), unused, adminId, freeze.id]
+    );
+    await connection.execute("UPDATE memberships SET end_date = ?, updated_by = ?, updated_at = UTC_TIMESTAMP() WHERE id = ?", [newEnd, adminId, membership.id]);
+    return { id: membership.id, action: "unfreeze", endDate: newEnd, returnedDays: unused };
+  });
+}
+
+// Goodwill / compensation extension with a mandatory reason.
+async function extendMembership(membershipId, { days, reason }, adminId) {
+  ensureDatabase();
+  const extra = actionDays(days, "Extension");
+  const why = actionReason(reason);
+  return transaction(async (connection) => {
+    const membership = await lockActiveMembership(connection, membershipId);
+    const newEnd = addDays(dateOnly(new Date(membership.end_date)), extra);
+    await connection.execute("UPDATE memberships SET end_date = ?, updated_by = ?, updated_at = UTC_TIMESTAMP() WHERE id = ?", [newEnd, adminId, membership.id]);
+    await connection.execute(
+      "INSERT INTO customer_notes (user_id, note, visibility, created_by, updated_by) VALUES (?, ?, 'internal', ?, ?)",
+      [membership.user_id, `Membership extended by ${extra} day(s): ${why}`, adminId, adminId]
+    );
+    return { id: membership.id, action: "extend", days: extra, endDate: newEnd, reason: why };
+  });
+}
+
+// Completes freezes whose window has passed (daily cron).
+async function completeEndedFreezes() {
+  ensureDatabase();
+  const result = await query(
+    "UPDATE membership_freezes SET status = 'completed', updated_at = UTC_TIMESTAMP() WHERE status = 'active' AND ends_on < UTC_DATE() AND deleted_at IS NULL"
+  );
+  return result.affectedRows || 0;
+}
+
+async function activeFreeze(membershipId) {
+  ensureDatabase();
+  const rows = await query(
+    `SELECT id, starts_on, ends_on, reason FROM membership_freezes
+     WHERE membership_id = ? AND status = 'active' AND deleted_at IS NULL AND UTC_DATE() BETWEEN starts_on AND ends_on
+     LIMIT 1`,
+    [membershipId]
+  );
+  return rows[0] || null;
+}
+
+async function updateMembership(id, action, payload = {}, adminId = null) {
+  ensureDatabase();
+  if (action === "freeze") return freezeMembership(id, payload, adminId);
+  if (action === "unfreeze") return unfreezeMembership(id, adminId);
+  if (action === "extend") return extendMembership(id, payload, adminId);
   if (action !== "cancel") {
     throw createHttpError(400, "Unsupported membership action.", "MEMBERSHIP_ACTION_INVALID");
   }
@@ -361,6 +494,11 @@ async function latestMembership(userId) {
 }
 
 module.exports = {
+  activeFreeze,
+  completeEndedFreezes,
+  extendMembership,
+  freezeMembership,
+  unfreezeMembership,
   activateMembership,
   activateOnConnection,
   extendOnConnection,

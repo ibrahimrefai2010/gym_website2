@@ -1,3 +1,4 @@
+const { createLog } = require("../utils/logger");
 const membershipRepository = require("../repositories/membershipRepository");
 const membershipService = require("../services/membershipService");
 const { assertBranchOwnership } = require("../security/branchAccess");
@@ -40,7 +41,13 @@ async function cancel(req, res) {
 
 async function action(req, res) {
   await assertMembershipOwnership(req);
-  const data = await membershipRepository.updateMembership(req.params.id, req.body.action, req.body);
+  const action = String(req.body?.action || "");
+  const data = await membershipRepository.updateMembership(req.params.id, action, req.body || {}, req.user?.id);
+  await createLog("admin", req.user?.id, `membership.${action}`, "memberships", req.params.id, {
+    days: req.body?.days || null,
+    reason: req.body?.reason || null,
+    endDate: data.endDate || null
+  }, req.ip, req.effectiveBranchId);
   res.json({ success: true, data });
 }
 

@@ -42,7 +42,12 @@ async function list(req, res) {
     branchId: req.effectiveBranchId || "",
     gender: cleanString(req.query.gender, 20),
     nationality: cleanString(req.query.nationality, 80),
-    membershipStatus: cleanString(req.query.membershipStatus, 20)
+    membershipStatus: cleanString(req.query.membershipStatus, 20),
+    planId: cleanString(req.query.planId, 20),
+    coachId: cleanString(req.query.coachId, 20),
+    expiringWithin: cleanString(req.query.expiringWithin, 4),
+    inactiveDays: cleanString(req.query.inactiveDays, 4),
+    sort: cleanString(req.query.sort, 20)
   });
   res.json({ success: true, data });
 }
@@ -99,7 +104,43 @@ async function update(req, res) {
   res.json({ success: true, data });
 }
 
+async function ownedCustomer(req) {
+  const existing = await customerRepository.getCustomer(req.params.id);
+  await assertBranchOwnership(existing?.customer, req, createHttpError(404, "Customer not found.", "CUSTOMER_NOT_FOUND"));
+  return existing;
+}
+
+async function notes(req, res) {
+  await ownedCustomer(req);
+  res.json({ success: true, data: await customerRepository.listNotes(req.params.id) });
+}
+
+async function addNote(req, res) {
+  const existing = await ownedCustomer(req);
+  const data = await customerRepository.addNote(req.params.id, req.body?.note, req.user?.id);
+  await createLog("admin", req.user?.id, "customer.note", "users", req.params.id, null, req.ip, existing.customer.branchId);
+  res.status(201).json({ success: true, data });
+}
+
+async function remove(req, res) {
+  const existing = await ownedCustomer(req);
+  const data = await customerRepository.softDeleteCustomer(req.params.id, req.user?.id);
+  await createLog("admin", req.user?.id, "customer.delete", "users", req.params.id, null, req.ip, existing.customer.branchId);
+  res.json({ success: true, data });
+}
+
+async function regenerateCard(req, res) {
+  const existing = await ownedCustomer(req);
+  const data = await customerRepository.regenerateCardToken(req.params.id);
+  await createLog("admin", req.user?.id, "customer.card_regenerate", "users", req.params.id, null, req.ip, existing.customer.branchId);
+  res.json({ success: true, data: { id: data.id, regenerated: Boolean(data.cardToken) } });
+}
+
 module.exports = {
+  addNote,
+  notes,
+  regenerateCard,
+  remove,
   create,
   detail,
   list,

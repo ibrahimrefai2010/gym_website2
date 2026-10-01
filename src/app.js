@@ -156,7 +156,8 @@ app.use("/api/v1/coaches", coachRoutes);
 app.use("/api/v1", mediaRoutes);
 app.use("/api/v1/user", authenticate, memberRoutes);
 app.use("/api/v1/user", authenticate, userRoutes);
-app.use("/api/v1/users", authenticate, requireAdmin, userRoutes);
+// attachEffectiveBranch: the admin member list/detail/export are branch-scoped.
+app.use("/api/v1/users", authenticate, requireAdmin, attachEffectiveBranch, userRoutes);
 app.use("/api/v1/admin", authenticate, requireAdmin, attachEffectiveBranch, adminRoutes);
 
 app.get("/", (_req, res) => {

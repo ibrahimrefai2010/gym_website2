@@ -31,7 +31,7 @@ const demoMessages = [
 // own comment ("Leads / CRM: extend `messages` rather than a new table").
 // `status` (unread/read/archived) stays the inbox "seen" concept;
 // `lead_status` is the separate CRM pipeline this phase wires up.
-const MESSAGE_SELECT = `SELECT m.id, m.name, m.email, m.phone, m.subject, m.message, m.status, m.source,
+const MESSAGE_SELECT = `SELECT m.id, m.branch_id, m.name, m.email, m.phone, m.subject, m.message, m.status, m.source,
     m.lead_status, m.assigned_to, a.full_name AS assigned_to_name, m.converted_user_id,
     m.created_at, m.updated_at
   FROM messages m
@@ -41,6 +41,7 @@ function mapMessage(row) {
   if (!row) return null;
   return {
     id: row.id,
+    branchId: row.branch_id != null ? Number(row.branch_id) : null,
     name: row.name,
     email: row.email,
     phone: row.phone,
@@ -87,9 +88,9 @@ async function createMessage(payload) {
   }
 
   const result = await query(
-    `INSERT INTO messages (name, email, phone, subject, message, status, ip_address)
-     VALUES (?, ?, ?, ?, ?, 'unread', ?)`,
-    [payload.name, payload.email, payload.phone, payload.subject, payload.message, payload.ipAddress || null]
+    `INSERT INTO messages (branch_id, name, email, phone, subject, message, status, ip_address)
+     VALUES (?, ?, ?, ?, ?, ?, 'unread', ?)`,
+    [payload.branchId || 1, payload.name, payload.email, payload.phone, payload.subject, payload.message, payload.ipAddress || null]
   );
 
   return getMessageById(result.insertId);
@@ -99,12 +100,11 @@ async function createMessage(payload) {
 // pipeline filters (leadStatus, assignedTo, source) and a free-text search,
 // mirroring customerRepository.listCustomers/taskRepository.listTasks's
 // dynamic-WHERE + pagination shape ({ items, pagination }) rather than the
-// old flat-array-of-100 return. See report: `messages` has no branch_id
-// column at all (confirmed in Part 1's own recon and re-confirmed here --
-// unlike tasks/customers there is deliberately no branchId filter param;
-// leads stay branch-agnostic at the query layer until assigned to a branch-
-// scoped admin, see messageController for the full reasoning).
+// old flat-array-of-100 return. branchId is REQUIRED (server-derived): a
+// lead belongs to the branch whose site it came from (migration
+// 202610010003_member_ops); without a branch the list is empty.
 async function listMessages({
+  branchId = "",
   status = "",
   leadStatus = "",
   assignedTo = "",
@@ -122,8 +122,8 @@ async function listMessages({
     return { items, pagination: { page: 1, pageSize: items.length || 1, total: items.length } };
   }
 
-  const where = [];
-  const params = [];
+  const where = ["m.branch_id = ?"];
+  const params = [branchId || 0];
   if (status) {
     where.push("m.status = ?");
     params.push(status);
@@ -273,12 +273,8 @@ async function addLeadNote(messageId, note, adminId) {
 // from the lead's name/phone/email and creates it via
 // customerRepository.createCustomer -- the same path customerController.create
 // already uses for an admin manually adding a member -- rather than
-// duplicating registration logic. branchId is resolved by the caller
-// (messageController.convert, via security/branchAccess.resolveWriteBranchId)
-// the same way an admin-initiated customer creation resolves it: a lead has
-// no branch of its own, so converting one lands the new member in whichever
-// branch the converting admin is scoped/switched to, exactly like a manual
-// "Add customer" would.
+// duplicating registration logic. The new member always lands in the
+// lead's own branch (the caller has already checked the admin owns it).
 async function convertLeadToMember(messageId, adminId, branchId) {
   if (!hasDatabaseConfig()) {
     throw createHttpError(503, "Database configuration is required.", "DATABASE_REQUIRED");
@@ -298,7 +294,7 @@ async function convertLeadToMember(messageId, adminId, branchId) {
   // of inventing a second one.
   const created = await customerRepository.createCustomer(
     {
-      branchId,
+      branchId: message.branchId || branchId,
       fullName: message.name,
       email: message.email,
       phone: message.phone

@@ -4,6 +4,7 @@ const { hashPassword } = require("../utils/hash");
 const planRepository = require("./planRepository");
 const offerRepository = require("./offerRepository");
 const membershipRepository = require("./membershipRepository");
+const customerRepository = require("./customerRepository");
 const messageRepository = require("./messageRepository");
 const settingsRepository = require("./settingsRepository");
 const sliderRepository = require("./sliderRepository");
@@ -138,10 +139,13 @@ async function getOverview(branchId = 1) {
           (SELECT COUNT(*) FROM memberships WHERE status = 'expired' AND branch_id = ?) AS expired_members,
           (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = 'completed' AND branch_id = ? AND completed_at >= UTC_TIMESTAMP() - INTERVAL 30 DAY) AS monthly_revenue,
           (SELECT COUNT(*) FROM payments WHERE status = 'pending' AND branch_id = ?) AS pending_payments,
-          (SELECT COUNT(*) FROM messages WHERE status = 'unread') AS unread_messages,
+          (SELECT COUNT(*) FROM messages WHERE status = 'unread' AND branch_id = ?) AS unread_messages,
           (SELECT COUNT(*) FROM users WHERE DATE(created_at) = UTC_DATE() AND deleted_at IS NULL AND branch_id = ?) AS todays_new_users,
-          (SELECT COUNT(*) FROM notifications WHERE is_read = 0) AS open_notifications`,
-        [branchId, branchId, branchId, branchId, branchId, branchId]
+          (SELECT COUNT(*) FROM memberships WHERE status = 'active' AND branch_id = ? AND end_date BETWEEN UTC_DATE() AND UTC_DATE() + INTERVAL 7 DAY) AS expiring_7,
+          (SELECT COUNT(*) FROM memberships WHERE status = 'active' AND branch_id = ? AND end_date BETWEEN UTC_DATE() AND UTC_DATE() + INTERVAL 3 DAY) AS expiring_3,
+          (SELECT COUNT(*) FROM memberships WHERE status = 'active' AND branch_id = ? AND end_date BETWEEN UTC_DATE() AND UTC_DATE() + INTERVAL 1 DAY) AS expiring_1,
+          (SELECT COUNT(*) FROM notifications n JOIN users nu ON nu.id = n.user_id WHERE n.is_read = 0 AND nu.branch_id = ?) AS open_notifications`,
+        [branchId, branchId, branchId, branchId, branchId, branchId, branchId, branchId, branchId, branchId, branchId]
       ),
       query(
         `SELECT u.id, u.full_name, u.email, u.phone, u.status, p.name_en AS plan
@@ -177,7 +181,7 @@ async function getOverview(branchId = 1) {
         [branchId]
       ),
       // messages (contact-form leads) has no branch_id column -- left global.
-      query("SELECT id, name, email, phone, subject, status, created_at FROM messages ORDER BY created_at DESC LIMIT 10"),
+      query("SELECT id, name, email, phone, subject, status, created_at FROM messages WHERE branch_id = ? ORDER BY created_at DESC LIMIT 10", [branchId]),
       membershipRepository.listMemberships(branchId),
       query(
         `SELECT id, full_name AS username, email, role, created_at
@@ -187,7 +191,12 @@ async function getOverview(branchId = 1) {
         [branchId]
       ),
       // notifications has no branch_id column (only user_id) -- left global.
-      query("SELECT id, type, title_en, title_ar, is_read, created_at FROM notifications ORDER BY created_at DESC LIMIT 10"),
+      query(
+        `SELECT n.id, n.type, n.title_en, n.title_ar, n.is_read, n.created_at
+         FROM notifications n JOIN users nu ON nu.id = n.user_id
+         WHERE nu.branch_id = ? ORDER BY n.created_at DESC LIMIT 10`,
+        [branchId]
+      ),
       // Tasks/Follow-ups "Open Tasks" dashboard widget (count by priority +
       // overdue count), branch-scope aware like everything else here.
       taskRepository.countOpenByPriority({ branchId }),
@@ -195,6 +204,8 @@ async function getOverview(branchId = 1) {
     ]);
 
   const stats = statsRows[0] || {};
+  const inactivityDays = Number(await settingsRepository.getSetting("member_inactivity_days", 14, branchId)) || 14;
+  const atRisk = await customerRepository.listAtRiskMembers(branchId, inactivityDays, 5000);
 
   return {
     stats: [
@@ -209,6 +220,13 @@ async function getOverview(branchId = 1) {
       { label: { en: "Pending payments", ar: "مدفوعات معلقة" }, value: String(stats.pending_payments || 0), delta: "" },
       { label: { en: "Unread messages", ar: "رسائل غير مقروءة" }, value: String(stats.unread_messages || 0), delta: "" },
       { label: { en: "Today's new users", ar: "مستخدمون جدد اليوم" }, value: String(stats.todays_new_users || 0), delta: "" },
+      {
+        key: "expiring",
+        label: { en: "Expiring in 7 days", ar: "تنتهي خلال 7 أيام" },
+        value: String(stats.expiring_7 || 0),
+        delta: `3d: ${stats.expiring_3 || 0} · 1d: ${stats.expiring_1 || 0}`
+      },
+      { key: "atRisk", label: { en: "At-risk members", ar: "أعضاء منقطعون" }, value: String(atRisk.length), delta: `${inactivityDays}d` },
       { label: { en: "Open notifications", ar: "تنبيهات مفتوحة" }, value: String(stats.open_notifications || 0), delta: "" }
     ],
     users: users.map((user) => ({

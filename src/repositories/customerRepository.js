@@ -54,10 +54,46 @@ function mapCustomer(row) {
   };
 }
 
-async function listCustomers({ page = 1, pageSize = 25, search = "", status = "", branchId = "", gender = "", nationality = "", membershipStatus = "" } = {}) {
+// Display status for the admin member list, in priority order:
+// suspended account > frozen (active freeze today) > active > expired >
+// pending > none. "frozen" is not a memberships.status value -- a freeze is a
+// membership_freezes row (see membershipRepository.freezeMembership).
+const MEMBER_LIST_STATUS_SQL = `CASE
+    WHEN u.status = 'suspended' THEN 'suspended'
+    WHEN fz.id IS NOT NULL THEN 'frozen'
+    WHEN lm.status = 'active' AND (lm.end_date IS NULL OR lm.end_date >= UTC_DATE()) THEN 'active'
+    WHEN lm.status IN ('active','expired') THEN 'expired'
+    WHEN lm.status = 'pending' THEN 'pending'
+    ELSE 'none'
+  END`;
+
+const MEMBER_LIST_SORTS = {
+  newest: "u.created_at DESC",
+  name: "u.full_name ASC",
+  expiry: "lm.end_date IS NULL, lm.end_date ASC",
+  lastVisit: "last_visit IS NULL, last_visit ASC"
+};
+
+// Admin member list. branchId is REQUIRED (server-derived); without one the
+// list is empty rather than every branch.
+async function listCustomers({
+  page = 1,
+  pageSize = 25,
+  search = "",
+  status = "",
+  branchId = "",
+  gender = "",
+  nationality = "",
+  membershipStatus = "",
+  planId = "",
+  coachId = "",
+  expiringWithin = "",
+  inactiveDays = "",
+  sort = "newest"
+} = {}) {
   ensureDatabase();
-  const where = ["u.deleted_at IS NULL"];
-  const params = [];
+  const where = ["u.deleted_at IS NULL", "u.branch_id = ?"];
+  const params = [branchId || 0];
   if (search) {
     where.push(`(
       u.full_name LIKE ? OR u.email LIKE ? OR u.phone LIKE ? OR u.member_code = ?
@@ -69,10 +105,6 @@ async function listCustomers({ page = 1, pageSize = 25, search = "", status = ""
     where.push("u.status = ?");
     params.push(status);
   }
-  if (branchId) {
-    where.push("u.branch_id = ?");
-    params.push(branchId);
-  }
   if (gender) {
     where.push("cp.gender = ?");
     params.push(gender);
@@ -81,10 +113,29 @@ async function listCustomers({ page = 1, pageSize = 25, search = "", status = ""
     where.push("cp.nationality = ?");
     params.push(nationality);
   }
-  if (membershipStatus) {
-    // The display join is active-only, so match any membership of that status via a subquery.
-    where.push("EXISTS (SELECT 1 FROM memberships mm WHERE mm.user_id = u.id AND mm.status = ?)");
+  if (["active", "expired", "frozen", "pending", "none", "suspended"].includes(membershipStatus)) {
+    where.push(`${MEMBER_LIST_STATUS_SQL} = ?`);
     params.push(membershipStatus);
+  }
+  if (planId) {
+    where.push("lm.plan_id = ?");
+    params.push(planId);
+  }
+  if (coachId) {
+    where.push("cp.coach_id = ?");
+    params.push(coachId);
+  }
+  const expiring = Number.parseInt(expiringWithin, 10);
+  if (Number.isInteger(expiring) && expiring > 0 && expiring <= 365) {
+    where.push("lm.status = 'active' AND lm.end_date BETWEEN UTC_DATE() AND UTC_DATE() + INTERVAL ? DAY");
+    params.push(expiring);
+  }
+  const inactive = Number.parseInt(inactiveDays, 10);
+  if (Number.isInteger(inactive) && inactive > 0 && inactive <= 365) {
+    // At-risk: an active membership but no visit in the window.
+    where.push(`lm.status = 'active' AND lm.end_date >= UTC_DATE() AND fz.id IS NULL
+      AND (la.last_visit IS NULL OR la.last_visit < UTC_TIMESTAMP() - INTERVAL ? DAY)`);
+    params.push(inactive);
   }
 
   const limit = positiveInteger(pageSize, 25, 100);
@@ -93,21 +144,56 @@ async function listCustomers({ page = 1, pageSize = 25, search = "", status = ""
   const baseJoin = `FROM users u
     LEFT JOIN customer_profiles cp ON cp.user_id = u.id AND cp.deleted_at IS NULL
     LEFT JOIN branches b ON b.id = u.branch_id
-    LEFT JOIN memberships m ON m.user_id = u.id AND m.status = 'active'
-    LEFT JOIN plans p ON p.id = m.plan_id`;
+    LEFT JOIN coaches co ON co.id = cp.coach_id AND co.deleted_at IS NULL
+    LEFT JOIN (
+      SELECT ranked.id, ranked.user_id, ranked.status, ranked.start_date, ranked.end_date, ranked.plan_id
+      FROM (
+        SELECT mm.id, mm.user_id, mm.status, mm.start_date, mm.end_date, mm.plan_id,
+          ROW_NUMBER() OVER (
+            PARTITION BY mm.user_id
+            ORDER BY FIELD(mm.status, 'active', 'pending', 'expired', 'cancelled'), COALESCE(mm.end_date, mm.created_at) DESC, mm.id DESC
+          ) AS rn
+        FROM memberships mm
+        WHERE mm.status <> 'cancelled'
+      ) ranked
+      WHERE ranked.rn = 1
+    ) lm ON lm.user_id = u.id
+    LEFT JOIN plans p ON p.id = lm.plan_id
+    LEFT JOIN membership_freezes fz ON fz.membership_id = lm.id AND fz.status = 'active' AND fz.deleted_at IS NULL
+      AND UTC_DATE() BETWEEN fz.starts_on AND fz.ends_on
+    LEFT JOIN (
+      SELECT user_id, MAX(check_in_at) AS last_visit FROM attendance_logs WHERE deleted_at IS NULL GROUP BY user_id
+    ) la ON la.user_id = u.id`;
+  const order = MEMBER_LIST_SORTS[sort] || MEMBER_LIST_SORTS.newest;
   const rows = await query(
     `SELECT u.id, u.branch_id, b.name_en AS branch_name, u.full_name, u.email, u.phone, u.member_code,
-      u.status, u.created_at, u.updated_at, cp.gender, cp.nationality, cp.birth_date,
-      cp.city, m.status AS membership_status, p.name_en AS membership_plan
+      u.status, u.created_at, u.updated_at, cp.gender, cp.nationality, cp.birth_date, cp.city,
+      cp.avatar_path, cp.coach_id, co.name_en AS coach_en, co.name_ar AS coach_ar,
+      lm.id AS membership_id, lm.start_date, lm.end_date, p.name_en AS membership_plan, p.name_ar AS membership_plan_ar,
+      ${MEMBER_LIST_STATUS_SQL} AS display_status,
+      DATEDIFF(lm.end_date, UTC_DATE()) AS days_remaining,
+      fz.ends_on AS frozen_until,
+      la.last_visit
      ${baseJoin}
      WHERE ${where.join(" AND ")}
-     ORDER BY u.created_at DESC
+     ORDER BY ${order}, u.id DESC
      LIMIT ${limit} OFFSET ${offset}`,
     params
   );
   const totalRows = await query(`SELECT COUNT(DISTINCT u.id) AS total ${baseJoin} WHERE ${where.join(" AND ")}`, params);
   return {
-    items: rows.map(mapCustomer),
+    items: rows.map((row) => ({
+      ...mapCustomer({ ...row, membership_status: row.display_status }),
+      membershipId: row.membership_id || null,
+      membershipPlanAr: row.membership_plan_ar || null,
+      startDate: row.start_date,
+      endDate: row.end_date,
+      daysRemaining: row.days_remaining == null ? null : Number(row.days_remaining),
+      frozenUntil: row.frozen_until || null,
+      lastVisit: row.last_visit || null,
+      hasAvatar: Boolean(row.avatar_path),
+      coach: row.coach_id ? { id: row.coach_id, name: { en: row.coach_en, ar: row.coach_ar } } : null
+    })),
     pagination: { page: currentPage, pageSize: limit, total: Number(totalRows[0]?.total || 0) }
   };
 }
@@ -357,7 +443,94 @@ async function getCustomer(userId) {
   };
 }
 
+// ---- Admin member actions --------------------------------------------------
+
+async function addNote(userId, note, adminId) {
+  ensureDatabase();
+  const text = String(note || "").trim().slice(0, 4000);
+  if (!text) {
+    throw createHttpError(422, "Write a note first.", "NOTE_REQUIRED");
+  }
+  const result = await query(
+    "INSERT INTO customer_notes (user_id, note, visibility, created_by, updated_by) VALUES (?, ?, 'internal', ?, ?)",
+    [userId, text, adminId, adminId]
+  );
+  return { id: result.insertId, note: text };
+}
+
+async function listNotes(userId) {
+  ensureDatabase();
+  return query(
+    `SELECT n.id, n.note, n.created_at, a.full_name AS author
+     FROM customer_notes n
+     LEFT JOIN admin_users a ON a.id = n.created_by
+     WHERE n.user_id = ? AND n.deleted_at IS NULL
+     ORDER BY n.created_at DESC, n.id DESC
+     LIMIT 100`,
+    [userId]
+  );
+}
+
+// Soft delete: the account can no longer sign in or check in, but every
+// financial and attendance record stays intact. Active sessions are revoked.
+async function softDeleteCustomer(userId, adminId) {
+  ensureDatabase();
+  return transaction(async (connection) => {
+    const [result] = await connection.execute(
+      "UPDATE users SET deleted_at = UTC_TIMESTAMP(), status = 'inactive', updated_at = UTC_TIMESTAMP() WHERE id = ? AND deleted_at IS NULL",
+      [userId]
+    );
+    if (result.affectedRows === 0) {
+      throw createHttpError(404, "Customer not found.", "CUSTOMER_NOT_FOUND");
+    }
+    await connection.execute("UPDATE refresh_tokens SET revoked_at = UTC_TIMESTAMP() WHERE user_id = ? AND revoked_at IS NULL", [userId]);
+    await connection.execute(
+      "INSERT INTO customer_notes (user_id, note, visibility, created_by, updated_by) VALUES (?, 'Account deleted (soft delete).', 'internal', ?, ?)",
+      [userId, adminId, adminId]
+    );
+    return { id: Number(userId), deleted: true };
+  });
+}
+
+// New card token: any printed/screenshotted QR stops working immediately.
+async function regenerateCardToken(userId) {
+  ensureDatabase();
+  await query("UPDATE users SET card_token = REPLACE(UUID(), '-', ''), updated_at = UTC_TIMESTAMP() WHERE id = ? AND deleted_at IS NULL", [userId]);
+  const rows = await query("SELECT card_token FROM users WHERE id = ?", [userId]);
+  return { id: Number(userId), cardToken: rows[0]?.card_token || null };
+}
+
+// At-risk members of one branch: active (not frozen) membership, no visit
+// in `inactivityDays` (never visited counts once they have had the
+// membership that long). Used by the daily task job and the dashboard.
+async function listAtRiskMembers(branchId, inactivityDays, limit = 500) {
+  ensureDatabase();
+  const days = Math.max(1, Math.min(Number(inactivityDays) || 14, 365));
+  return query(
+    `SELECT u.id, u.full_name AS fullName, u.member_code AS memberCode, la.last_visit AS lastVisit
+     FROM users u
+     JOIN memberships m ON m.user_id = u.id AND m.status = 'active' AND m.end_date >= UTC_DATE()
+     LEFT JOIN membership_freezes fz ON fz.membership_id = m.id AND fz.status = 'active' AND fz.deleted_at IS NULL
+       AND UTC_DATE() BETWEEN fz.starts_on AND fz.ends_on
+     LEFT JOIN (SELECT user_id, MAX(check_in_at) AS last_visit FROM attendance_logs WHERE deleted_at IS NULL GROUP BY user_id) la
+       ON la.user_id = u.id
+     WHERE u.branch_id = ? AND u.deleted_at IS NULL AND u.status = 'active' AND fz.id IS NULL
+       AND (
+         (la.last_visit IS NOT NULL AND la.last_visit < UTC_TIMESTAMP() - INTERVAL ? DAY)
+         OR (la.last_visit IS NULL AND m.start_date <= UTC_DATE() - INTERVAL ? DAY)
+       )
+     GROUP BY u.id, u.full_name, u.member_code, la.last_visit
+     LIMIT ${Math.max(1, Math.min(Number(limit) || 500, 5000))}`,
+    [branchId, days, days]
+  );
+}
+
 module.exports = {
+  listAtRiskMembers,
+  addNote,
+  listNotes,
+  regenerateCardToken,
+  softDeleteCustomer,
   createCustomer,
   getCustomer,
   listCustomers,

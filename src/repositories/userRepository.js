@@ -175,10 +175,12 @@ async function getDashboard(userId) {
   };
 }
 
-async function listUsers({ page = 1, pageSize = 10, search = "", status = "", membership = "" } = {}) {
+// branchId is REQUIRED (server-derived effective branch) -- this list used
+// to return every branch's members to any admin with users:read.
+async function listUsers({ page = 1, pageSize = 10, search = "", status = "", membership = "", branchId = "" } = {}) {
   ensureDatabase();
-  const where = ["u.deleted_at IS NULL"];
-  const params = [];
+  const where = ["u.deleted_at IS NULL", "u.branch_id = ?"];
+  const params = [branchId || 0];
 
   if (search) {
     where.push("(u.full_name LIKE ? OR u.email LIKE ? OR u.phone LIKE ?)");
@@ -234,7 +236,8 @@ async function listUsers({ page = 1, pageSize = 10, search = "", status = "", me
   };
 }
 
-async function exportMembers({ limit = 10000 } = {}) {
+// branchId REQUIRED -- the member export used to contain both branches.
+async function exportMembers({ limit = 10000, branchId = 0 } = {}) {
   ensureDatabase();
   const cap = Math.min(Math.max(Number.parseInt(limit, 10) || 10000, 1), 50000);
   return query(
@@ -257,16 +260,17 @@ async function exportMembers({ limit = 10000 } = {}) {
        JOIN plans pl ON pl.id = ranked.plan_id
        WHERE ranked.rn = 1
      ) lm ON lm.user_id = u.id
-     WHERE u.deleted_at IS NULL
+     WHERE u.deleted_at IS NULL AND u.branch_id = ?
      ORDER BY u.created_at DESC
-     LIMIT ${cap}`
+     LIMIT ${cap}`,
+    [branchId || 0]
   );
 }
 
 async function getUserDetails(id) {
   ensureDatabase();
   const [userRows, dashboard, tokens] = await Promise.all([
-    query("SELECT id, full_name, email, phone, status, created_at FROM users WHERE id = ? AND deleted_at IS NULL LIMIT 1", [id]),
+    query("SELECT id, branch_id, full_name, email, phone, status, created_at FROM users WHERE id = ? AND deleted_at IS NULL LIMIT 1", [id]),
     getDashboard(id),
     query(
       `SELECT ip_address, user_agent, created_at, expires_at, revoked_at
@@ -279,6 +283,7 @@ async function getUserDetails(id) {
   ]);
 
   return {
+    branchId: userRows[0] ? Number(userRows[0].branch_id) : null,
     user: publicUser(userRows[0]),
     membership: dashboard.membership,
     payments: dashboard.payments,

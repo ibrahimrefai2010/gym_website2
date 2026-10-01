@@ -9,6 +9,7 @@ const { assertSaudiPhone, assertStrongPassword, cleanString, pagination } = requ
 const { createHttpError } = require("../utils/httpError");
 const { refreshTokenFromRequest } = require("../utils/cookies");
 const { createLog } = require("../utils/logger");
+const { assertBranchOwnership } = require("../security/branchAccess");
 
 async function dashboard(req, res) {
   const data = await userRepository.getDashboard(req.user.id);
@@ -25,13 +26,15 @@ async function list(req, res) {
     ...pagination(req.query),
     search: req.query.search,
     status: req.query.status,
-    membership: req.query.membership
+    membership: req.query.membership,
+    branchId: req.effectiveBranchId || 0
   });
   res.json({ success: true, data });
 }
 
 async function detail(req, res) {
   const data = await userRepository.getUserDetails(req.params.id);
+  await assertBranchOwnership(data.user ? data : null, req, createHttpError(404, "User not found.", "USER_NOT_FOUND"));
   res.json({ success: true, data });
 }
 
@@ -53,15 +56,15 @@ async function memberAvatar(req, res) {
 async function exportMembers(req, res) {
   const format = String(req.query.format || "xlsx").toLowerCase() === "pdf" ? "pdf" : "xlsx";
   const lang = String(req.query.lang || "en").toLowerCase() === "ar" ? "ar" : "en";
-  const rows = await userRepository.exportMembers({ limit: req.query.limit });
+  const rows = await userRepository.exportMembers({ limit: req.query.limit, branchId: req.effectiveBranchId || 0 });
   const stamp = new Date().toISOString().slice(0, 10);
 
-  await createLog("admin", req.user?.id, "members.export", "users", null, { format, count: rows.length }, req.ip);
+  await createLog("admin", req.user?.id, "members.export", "users", null, { format, count: rows.length }, req.ip, req.effectiveBranchId);
 
   if (format === "pdf") {
     let gymName = "Muscle and Fitness Center";
     try {
-      const settings = await settingsRepository.publicSettings(req.user?.branchId || 1);
+      const settings = await settingsRepository.publicSettings(req.effectiveBranchId || req.user?.branchId || 1);
       gymName = (lang === "ar" ? settings.gym_name_ar : settings.gym_name_en) || gymName;
     } catch (_error) {
       /* fall back to default name */

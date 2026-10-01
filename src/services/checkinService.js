@@ -109,7 +109,7 @@ async function resolveMember({ cardToken, code, userId, query: search, branchId 
 //   { allowed: true, member, membership, attendance, duplicate }  -- checked in
 //   { allowed: false, reason, member }                            -- rejected, no row created
 // reason is one of: "not_found", "wrong_branch", "suspended",
-// "inactive_account", "expired", "no_active_membership".
+// "inactive_account", "frozen", "expired", "no_active_membership".
 // member is null for "wrong_branch" -- reception at one branch never sees
 // the other branch's member details (same no-leak rule as the admin 404s).
 // duplicate is true when an open check-in from the last
@@ -146,6 +146,11 @@ async function verifyAndCheckIn(userId, method = "manual", adminId = null, { bra
     const latest = await membershipRepository.latestMembership(userId);
     const expired = latest && (latest.status === "expired" || latest.status === "active");
     return { allowed: false, reason: expired ? "expired" : "no_active_membership", member };
+  }
+
+  const freeze = await membershipRepository.activeFreeze(membership.id);
+  if (freeze) {
+    return { allowed: false, reason: "frozen", member, frozenUntil: freeze.ends_on };
   }
 
   // Lock the member row so two desks scanning the same member at once

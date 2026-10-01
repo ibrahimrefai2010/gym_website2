@@ -12,5 +12,9 @@ router.post("/", requirePermission("customers:manage"), asyncHandler(customerCon
 router.get("/:id", requirePermission("customers:manage"), asyncHandler(customerController.detail));
 router.put("/:id", requirePermission("customers:manage"), asyncHandler(customerController.update));
 router.patch("/:id", requirePermission("customers:manage"), asyncHandler(customerController.update));
+router.delete("/:id", requirePermission("customers:manage"), asyncHandler(customerController.remove));
+router.get("/:id/notes", requirePermission("customers:manage"), asyncHandler(customerController.notes));
+router.post("/:id/notes", requirePermission("customers:manage"), asyncHandler(customerController.addNote));
+router.post("/:id/card", requirePermission("customers:manage"), asyncHandler(customerController.regenerateCard));
 
 module.exports = router;

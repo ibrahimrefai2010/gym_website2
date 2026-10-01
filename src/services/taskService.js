@@ -133,6 +133,40 @@ async function createTaskForFailedPayment(payment, branchId) {
   );
 }
 
+// Trigger 4: an at-risk member (active membership, no visit for the
+// branch's member_inactivity_days). Gated by task_autogen_at_risk_members.
+// De-duplicated: no new task while an open one exists for this member, or
+// if one was created within the inactivity window (so a closed "no answer"
+// task is not immediately re-raised every morning).
+async function createTaskForAtRiskMember(member, branchId, inactivityDays) {
+  if (!branchId) {
+    return null;
+  }
+  const enabled = await autogenEnabled("task_autogen_at_risk_members", branchId);
+  if (!enabled) {
+    return null;
+  }
+  const recent = await taskRepository.hasRecentLinkedTask("customer", member.id, inactivityDays);
+  if (recent) {
+    return null;
+  }
+  return taskRepository.createTask(
+    {
+      branchId,
+      title: `At-risk member: ${member.fullName || `#${member.id}`} (no visit in ${inactivityDays}+ days)`,
+      description: `${member.fullName || "Member"}${member.memberCode ? ` (${member.memberCode})` : ""} has an active membership but no check-in since ${
+        member.lastVisit ? new Date(member.lastVisit).toISOString().slice(0, 10) : "joining"
+      }. Reach out to keep them engaged.`,
+      assignedTo: null,
+      dueDate: null,
+      priority: "medium",
+      linkedResourceType: "customer",
+      linkedResourceId: member.id
+    },
+    null
+  );
+}
+
 // Not a toggleable trigger: a paid payment that needs staff action (e.g. the
 // ZATCA invoice could not be issued because the branch VAT number is not
 // configured). Always created -- money was taken.
@@ -159,5 +193,6 @@ module.exports = {
   createTaskForExpiringMembership,
   createTaskForFailedPayment,
   createTaskForPaymentIssue,
+  createTaskForAtRiskMember,
   createTaskForNewLead
 };

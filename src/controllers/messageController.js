@@ -1,6 +1,6 @@
 const messageRepository = require("../repositories/messageRepository");
 const taskService = require("../services/taskService");
-const { resolveWriteBranchId } = require("../security/branchAccess");
+const { assertBranchOwnership } = require("../security/branchAccess");
 const { createHttpError } = require("../utils/httpError");
 const { assertEmail, assertEnum, assertMaxLength, cleanEmail, cleanPhone, cleanString, requireFields } = require("../utils/validator");
 const { auditLog, appLogger } = require("../utils/logger");
@@ -26,6 +26,8 @@ async function create(req, res) {
     phone: cleanPhone(req.body.phone),
     subject: cleanString(req.body.subject, 180),
     message: cleanString(req.body.message, 2000),
+    // The branch whose site the form was submitted on (subdomain-resolved).
+    branchId: req.branch?.id || 1,
     ipAddress: req.ip
   });
   await auditLog({
@@ -60,6 +62,7 @@ async function create(req, res) {
 // which has leads:read but not messages:write) can reach this one list.
 async function list(req, res) {
   const data = await messageRepository.listMessages({
+    branchId: req.effectiveBranchId || "",
     status: cleanString(req.query.status, 20),
     leadStatus: cleanString(req.query.leadStatus, 20),
     assignedTo: cleanString(req.query.assignedTo, 20),
@@ -73,7 +76,16 @@ async function list(req, res) {
 
 // Plain-inbox write: status only (read/archive), unchanged behavior/
 // permission (messages:write) from before this phase.
+// Every by-id lead route: another branch's lead is the same 404 as a
+// missing one.
+async function ownedMessage(req) {
+  const existing = await messageRepository.getMessageById(req.params.id);
+  await assertBranchOwnership(existing, req, messageNotFoundError());
+  return existing;
+}
+
 async function update(req, res) {
+  await ownedMessage(req);
   const status = cleanString(req.body.status, 20);
   assertEnum(status, ["unread", "read", "archived"], "Message status");
   const data = await messageRepository.updateMessage(req.params.id, {
@@ -96,10 +108,7 @@ async function update(req, res) {
 // catalog (leads:write's description: "Assign, update, note, convert, and
 // export leads") already draws this exact line.
 async function updateLead(req, res) {
-  const existing = await messageRepository.getMessageById(req.params.id);
-  if (!existing) {
-    throw messageNotFoundError();
-  }
+  await ownedMessage(req);
 
   if (req.body.leadStatus !== undefined) {
     assertEnum(cleanString(req.body.leadStatus, 20), LEAD_STATUSES, "Lead status");
@@ -122,15 +131,13 @@ async function updateLead(req, res) {
 }
 
 async function listNotes(req, res) {
-  const existing = await messageRepository.getMessageById(req.params.id);
-  if (!existing) {
-    throw messageNotFoundError();
-  }
+  await ownedMessage(req);
   const data = await messageRepository.listLeadNotes(req.params.id);
   res.json({ success: true, data });
 }
 
 async function addNote(req, res) {
+  await ownedMessage(req);
   requireFields(req.body, ["note"]);
   assertMaxLength(req.body.note, 2000, "Note");
   const data = await messageRepository.addLeadNote(req.params.id, cleanString(req.body.note, 2000), req.user?.id);
@@ -151,7 +158,8 @@ async function addNote(req, res) {
 // lands in their own branch; a switching admin may target any branch
 // they're permitted to. A lead has no branch of its own to inherit.
 async function convert(req, res) {
-  const branchId = await resolveWriteBranchId(req, req.body.branchId);
+  const lead = await ownedMessage(req);
+  const branchId = lead.branchId;
   const data = await messageRepository.convertLeadToMember(req.params.id, req.user?.id, branchId);
   await auditLog({
     actorId: req.user?.id,
@@ -166,6 +174,7 @@ async function convert(req, res) {
 }
 
 async function remove(req, res) {
+  await ownedMessage(req);
   const data = await messageRepository.deleteMessage(req.params.id);
   await auditLog({
     actorId: req.user?.id,

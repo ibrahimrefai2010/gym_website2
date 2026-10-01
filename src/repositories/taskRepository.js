@@ -243,7 +243,21 @@ async function countOverdue({ branchId } = {}) {
   return Number(rows[0]?.total || 0);
 }
 
+// Open task for this record, or any task created for it within `days`.
+async function hasRecentLinkedTask(resourceType, resourceId, days) {
+  ensureDatabase();
+  const rows = await query(
+    `SELECT id FROM tasks
+     WHERE linked_resource_type = ? AND linked_resource_id = ?
+       AND (status IN ('open','in_progress') OR created_at >= UTC_TIMESTAMP() - INTERVAL ? DAY)
+     LIMIT 1`,
+    [resourceType, resourceId, Math.max(1, Number(days) || 14)]
+  );
+  return Boolean(rows[0]);
+}
+
 module.exports = {
+  hasRecentLinkedTask,
   cancelTask,
   closeTask,
   countOpenByPriority,

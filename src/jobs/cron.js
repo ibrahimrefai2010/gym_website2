@@ -3,6 +3,9 @@ const { hasDatabaseConfig, query } = require("../config/database");
 const tokenRepository = require("../repositories/tokenRepository");
 const taskService = require("../services/taskService");
 const paymentService = require("../services/paymentService");
+const customerRepository = require("../repositories/customerRepository");
+const membershipRepository = require("../repositories/membershipRepository");
+const settingsRepository = require("../repositories/settingsRepository");
 const { appLogger } = require("../utils/logger");
 const { env } = require("../config/env");
 
@@ -146,6 +149,35 @@ cron.schedule(
   { timezone: env.timezone }
 );
 
+// At-risk members: one follow-up task per inactive member per branch
+// (taskService de-duplicates), and freezes whose window passed are closed.
+async function atRiskMembers() {
+  if (!hasDatabaseConfig()) return;
+  await membershipRepository.completeEndedFreezes();
+  const branches = await query("SELECT id FROM branches WHERE status = 'active' AND deleted_at IS NULL");
+  for (const branch of branches) {
+    const days = Number(await settingsRepository.getSetting("member_inactivity_days", 14, branch.id)) || 14;
+    const members = await customerRepository.listAtRiskMembers(branch.id, days);
+    for (const member of members) {
+      await taskService
+        .createTaskForAtRiskMember(member, branch.id, days)
+        .catch((error) => appLogger.error({ error, userId: member.id }, "Task autogen (at-risk member) failed"));
+    }
+  }
+}
+
+cron.schedule(
+  "30 9 * * *",
+  async () => {
+    try {
+      await atRiskMembers();
+    } catch (error) {
+      appLogger.error({ error }, "At-risk member cron failed");
+    }
+  },
+  { timezone: env.timezone }
+);
+
 // Moyasar safety net: settles pending online payments whose webhook was
 // missed and closes abandoned checkouts (see paymentService.finalizeMoyasarPayment).
 cron.schedule(
@@ -173,6 +205,7 @@ cron.schedule(
 );
 
 module.exports = {
+  atRiskMembers,
   cleanExpiredOtps,
   expireMemberships,
   renewalReminders
