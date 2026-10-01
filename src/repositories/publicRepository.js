@@ -3,6 +3,7 @@ const fallbackData = require("../db/fallbackData");
 const planRepository = require("./planRepository");
 const offerRepository = require("./offerRepository");
 const coachRepository = require("./coachRepository");
+const faqRepository = require("./faqRepository");
 const settingsRepository = require("./settingsRepository");
 const sliderRepository = require("./sliderRepository");
 const { appLogger } = require("../utils/logger");
@@ -17,7 +18,7 @@ async function optionalRows(sql, params = []) {
 }
 
 async function getDatabaseBootstrap(branchId = null) {
-  const [plans, offers, coaches, settings, slides, homepageRows] = await Promise.all([
+  const [plans, offers, coaches, faqs, settings, slides, homepageRows] = await Promise.all([
     planRepository.listPlans({ branchId }),
     offerRepository.listOffers({ branchId }),
     // Public roster is active-only (includeInactive defaults to false) and,
@@ -27,6 +28,7 @@ async function getDatabaseBootstrap(branchId = null) {
     // handles that by returning [], same as plans/offers would via their own
     // branch filter.
     coachRepository.listCoaches({ branchId: branchId || "" }),
+    faqRepository.listFaqs({ branchId: branchId || 1 }).catch(() => []),
     settingsRepository.publicSettings(branchId),
     sliderRepository.listSlides({ branchId }),
     // homepage_text rows are nullable branch_id ("applies to all branches");
@@ -68,9 +70,10 @@ async function getDatabaseBootstrap(branchId = null) {
     offers: offers.length > 0 ? offers : fallbackData.offers,
     coaches,
     slides: slides.length > 0 ? slides : fallbackData.slides,
-    faqs: fallbackData.faqs,
+    faqs: faqs.length > 0 ? faqs : fallbackData.faqs,
     siteImages: dynamic.siteImages,
     contact: dynamic.contact,
+    seo: dynamic.seo,
     workingHours: dynamic.workingHours
   };
 }

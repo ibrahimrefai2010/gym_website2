@@ -26,6 +26,19 @@ function fallbackSlides() {
   }));
 }
 
+// "YYYY-MM-DD" or "YYYY-MM-DDTHH:mm" from a date/datetime input -> SQL
+// DATETIME (stored as given, Riyadh-local intent is fine at day precision);
+// empty -> NULL (no limit).
+function scheduleValue(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  const match = text.match(/^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2}))?/);
+  if (!match) {
+    throw createHttpError(422, "Schedule dates must be YYYY-MM-DD.", "SLIDE_SCHEDULE_INVALID");
+  }
+  return `${match[1]} ${match[2] || "00:00"}:00`;
+}
+
 function mapSlide(slide) {
   return {
     id: slide.id,
@@ -34,7 +47,11 @@ function mapSlide(slide) {
     title: { en: slide.title_en, ar: slide.title_ar },
     body: { en: slide.body_en, ar: slide.body_ar },
     sortOrder: slide.sort_order,
-    isActive: Boolean(slide.is_active)
+    isActive: Boolean(slide.is_active),
+    branchId: slide.branch_id == null ? null : Number(slide.branch_id),
+    shared: slide.branch_id == null,
+    startsAt: slide.starts_at || null,
+    endsAt: slide.ends_at || null
   };
 }
 
@@ -44,7 +61,12 @@ async function listSlides({ includeInactive = false, branchId = "" } = {}) {
   }
 
   const where = [];
-  if (!includeInactive) where.push("is_active = 1");
+  if (!includeInactive) {
+    // Public site: active and inside its schedule window (if any).
+    where.push("is_active = 1");
+    where.push("(starts_at IS NULL OR starts_at <= UTC_TIMESTAMP())");
+    where.push("(ends_at IS NULL OR ends_at > UTC_TIMESTAMP())");
+  }
   // branch_id is nullable: NULL rows apply to every branch (today's rows, all
   // still unscoped). A future branch-specific row (branch_id = ?) is included
   // alongside them -- actual per-branch slides are a later seeding phase.
@@ -57,7 +79,7 @@ async function listSlides({ includeInactive = false, branchId = "" } = {}) {
   let rows = [];
   try {
     rows = await query(
-      `SELECT id, branch_id, image_url, fallback_image_url, title_en, title_ar, body_en, body_ar, sort_order, is_active
+      `SELECT id, branch_id, image_url, fallback_image_url, title_en, title_ar, body_en, body_ar, sort_order, is_active, starts_at, ends_at
        FROM slider_images
        ${whereSql}
        ORDER BY sort_order ASC, id DESC`,
@@ -73,7 +95,7 @@ async function listSlides({ includeInactive = false, branchId = "" } = {}) {
 async function getSlide(id) {
   ensureDatabase();
   const rows = await query(
-    `SELECT id, image_url, fallback_image_url, title_en, title_ar, body_en, body_ar, sort_order, is_active
+    `SELECT id, branch_id, image_url, fallback_image_url, title_en, title_ar, body_en, body_ar, sort_order, is_active, starts_at, ends_at
      FROM slider_images
      WHERE id = ?
      LIMIT 1`,
@@ -91,7 +113,10 @@ async function insertSlide(payload, preferredId = null) {
     cleanString(payload.bodyEn || payload.body?.en, 4000),
     cleanString(payload.bodyAr || payload.body?.ar, 4000),
     Number(payload.sortOrder || payload.displayOrder || 0),
-    boolValue(payload.isActive)
+    boolValue(payload.isActive),
+    payload.branchId ?? null,
+    scheduleValue(payload.startsAt),
+    scheduleValue(payload.endsAt)
   ];
 
   if (!params[2] || !params[3] || !params[4] || !params[5]) {
@@ -101,14 +126,14 @@ async function insertSlide(payload, preferredId = null) {
   const result = preferredId
     ? await query(
         `INSERT INTO slider_images
-          (id, image_url, fallback_image_url, title_en, title_ar, body_en, body_ar, sort_order, is_active)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (id, image_url, fallback_image_url, title_en, title_ar, body_en, body_ar, sort_order, is_active, branch_id, starts_at, ends_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [preferredId, ...params]
       )
     : await query(
         `INSERT INTO slider_images
-          (image_url, fallback_image_url, title_en, title_ar, body_en, body_ar, sort_order, is_active)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          (image_url, fallback_image_url, title_en, title_ar, body_en, body_ar, sort_order, is_active, branch_id, starts_at, ends_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         params
       );
 
@@ -132,7 +157,7 @@ async function saveSlide(payload) {
     const result = await query(
       `UPDATE slider_images
        SET image_url = ?, fallback_image_url = ?, title_en = ?, title_ar = ?, body_en = ?,
-         body_ar = ?, sort_order = ?, is_active = ?, updated_at = UTC_TIMESTAMP()
+         body_ar = ?, sort_order = ?, is_active = ?, branch_id = ?, starts_at = ?, ends_at = ?, updated_at = UTC_TIMESTAMP()
        WHERE id = ?`,
       [
         imageUrl,
@@ -143,6 +168,9 @@ async function saveSlide(payload) {
         bodyAr,
         Number(payload.sortOrder || payload.displayOrder || 0),
         boolValue(payload.isActive),
+        payload.branchId ?? null,
+        scheduleValue(payload.startsAt),
+        scheduleValue(payload.endsAt),
         payload.id
       ]
     );
@@ -161,6 +189,7 @@ async function saveSlide(payload) {
 }
 
 module.exports = {
+  getSlide,
   listSlides,
   saveSlide
 };

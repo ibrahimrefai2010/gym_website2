@@ -16,7 +16,21 @@ const publicKeys = [
   "home_hero_fallback_image_url",
   "auth_hero_image_url",
   "auth_hero_fallback_image_url",
-  "social_share_image_url"
+  "social_share_image_url",
+  "contact_email",
+  "address_en",
+  "address_ar",
+  "whatsapp_message_en",
+  "whatsapp_message_ar",
+  "instagram_url",
+  "x_url",
+  "tiktok_url",
+  "snapchat_url",
+  "meta_title_en",
+  "meta_title_ar",
+  "meta_description_en",
+  "meta_description_ar",
+  "favicon_url"
 ];
 
 const siteImageSettings = [
@@ -179,9 +193,28 @@ function settingsToBootstrap(settings) {
     contact: {
       phone: settings.phone_number,
       whatsapp: settings.whatsapp_number,
-      email: fallbackData.contact.email,
-      address: fallbackData.contact.address,
-      mapEmbedUrl: settings.google_maps_url
+      email: settings.contact_email || fallbackData.contact.email,
+      address:
+        settings.address_en || settings.address_ar
+          ? { en: settings.address_en || settings.address_ar, ar: settings.address_ar || settings.address_en }
+          : fallbackData.contact.address,
+      mapEmbedUrl: settings.google_maps_url,
+      // Pre-filled WhatsApp text per language (Part 2 §2.7.2).
+      whatsappMessage: {
+        en: settings.whatsapp_message_en || "Hello, I would like to know more about memberships.",
+        ar: settings.whatsapp_message_ar || "مرحبًا، أرغب في معرفة المزيد عن الاشتراكات."
+      },
+      social: {
+        instagram: settings.instagram_url || "",
+        x: settings.x_url || "",
+        tiktok: settings.tiktok_url || "",
+        snapchat: settings.snapchat_url || ""
+      }
+    },
+    seo: {
+      title: { en: settings.meta_title_en || "", ar: settings.meta_title_ar || "" },
+      description: { en: settings.meta_description_en || "", ar: settings.meta_description_ar || "" },
+      faviconUrl: settings.favicon_url || ""
     },
     workingHours: [
       {

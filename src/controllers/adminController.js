@@ -9,7 +9,8 @@ const { createLog } = require("../utils/logger");
 const rbacRepository = require("../repositories/rbacRepository");
 const planRepository = require("../repositories/planRepository");
 const offerRepository = require("../repositories/offerRepository");
-const { assertBranchOwnership, resolveWriteBranchId } = require("../security/branchAccess");
+const { assertBranchOwnership, canSwitchBranch, resolveWriteBranchId } = require("../security/branchAccess");
+const sliderRepository = require("../repositories/sliderRepository");
 
 const writePermissions = {
   plans: "plans:write",
@@ -122,7 +123,22 @@ async function save(req, res) {
     data = await adminRepository.saveSiteImages(req.body, req.user?.id, branchId);
     await createLog("admin", req.user?.id, "settings.images.update", "settings", null, null, req.ip, branchId);
   } else if (resource === "slides") {
-    data = await adminRepository.saveSlide(req.body);
+    // Branch rules: a slide belongs to the admin's branch; "shared" slides
+    // (branch_id NULL, shown on every site) only for cross-branch admins.
+    // Updating needs ownership of the existing slide (404 otherwise).
+    const switcher = await canSwitchBranch(req.user);
+    if (req.body.id) {
+      const existing = await sliderRepository.getSlide(req.body.id).catch(() => null);
+      if (existing) {
+        if (existing.shared) {
+          if (!switcher) throw createHttpError(404, "Slide not found.", "SLIDE_NOT_FOUND");
+        } else {
+          await assertBranchOwnership(existing, req, createHttpError(404, "Slide not found.", "SLIDE_NOT_FOUND"));
+        }
+      }
+    }
+    const branchId = req.body.shared === true && switcher ? null : await resolveWriteBranchId(req, req.body.branchId);
+    data = await adminRepository.saveSlide({ ...req.body, branchId });
     await createLog("admin", req.user?.id, req.body.id ? "slide.update" : "slide.create", "slider_images", data?.id || null, null, req.ip);
   } else if (resource === "roles") {
     data = await adminRepository.saveRole(req.body);

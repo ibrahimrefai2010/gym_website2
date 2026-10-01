@@ -35,6 +35,7 @@ const coachRoutes = require("./routes/coachRoutes");
 const dataTransferRoutes = require("./routes/dataTransferRoutes");
 const staffRoutes = require("./routes/staffRoutes");
 const opsRoutes = require("./routes/opsRoutes");
+const cmsRoutes = require("./routes/cmsRoutes");
 
 const app = express();
 const publicDir = path.join(__dirname, "..", "public");
@@ -161,6 +162,7 @@ app.use("/api/v1/coaches", coachRoutes);
 app.use("/api/v1/data", dataTransferRoutes);
 app.use("/api/v1/staff", staffRoutes);
 app.use("/api/v1/ops", opsRoutes);
+app.use("/api/v1/cms", cmsRoutes);
 app.use("/api/v1", mediaRoutes);
 app.use("/api/v1/user", authenticate, memberRoutes);
 app.use("/api/v1/user", authenticate, userRoutes);

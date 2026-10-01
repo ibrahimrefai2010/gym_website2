@@ -55,7 +55,7 @@ async function listOffers({ includeInactive = false, branchId = "" } = {}) {
     return includeInactive ? offers : offers.filter(isCurrent);
   }
 
-  const where = [includeInactive ? "deleted_at IS NULL" : "expires_at > UTC_TIMESTAMP() AND is_active = 1 AND deleted_at IS NULL"];
+  const where = [includeInactive ? "deleted_at IS NULL" : "expires_at > UTC_TIMESTAMP() AND (starts_at IS NULL OR starts_at <= UTC_TIMESTAMP()) AND is_active = 1 AND deleted_at IS NULL"];
   const params = [];
   if (branchId) {
     where.push("branch_id = ?");
