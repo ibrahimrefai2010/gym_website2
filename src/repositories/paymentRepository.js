@@ -256,8 +256,113 @@ async function listPendingMoyasar(limit = 50) {
   );
 }
 
+// Reception-recorded payment (cash / card terminal / bank transfer), pending
+// until paymentService.settlePaidPayment completes it in the same request.
+// provider_reference carries the per-submission idempotency key; a
+// concurrent double-submit hits the unique-ish lookup below inside the
+// transaction (FOR UPDATE on the member row serialises them).
+async function createManualAttempt({ userId, branchId, planId, amount, purpose, membershipId = null, method, reference, externalReference = null, adminId = null }) {
+  ensureDatabase();
+  return transaction(async (connection) => {
+    await connection.execute("SELECT id FROM users WHERE id = ? FOR UPDATE", [userId]);
+    const [dupes] = await connection.execute(
+      "SELECT id FROM payments WHERE provider = 'manual' AND provider_reference = ? LIMIT 1",
+      [reference]
+    );
+    if (dupes[0]) {
+      return { paymentId: dupes[0].id, duplicate: true };
+    }
+    let targetMembershipId = membershipId;
+    if (purpose === "new") {
+      const [membershipResult] = await connection.execute(
+        "INSERT INTO memberships (user_id, plan_id, branch_id, status, created_by) VALUES (?, ?, ?, 'pending', ?)",
+        [userId, planId, branchId, adminId]
+      );
+      targetMembershipId = membershipResult.insertId;
+    }
+    const [paymentResult] = await connection.execute(
+      `INSERT INTO payments (branch_id, user_id, membership_id, plan_id, purpose, provider, payment_method,
+         provider_reference, transaction_id, amount, currency, status, created_by, employee_id)
+       VALUES (?, ?, ?, ?, ?, 'manual', ?, ?, ?, ?, 'SAR', 'pending', ?, ?)`,
+      [branchId, userId, targetMembershipId, planId, purpose, method, reference, externalReference, amount, adminId, adminId]
+    );
+    return { paymentId: paymentResult.insertId, duplicate: false };
+  });
+}
+
+function paymentFilters({ branchId = "", status = "", provider = "", method = "", dateFrom = "", dateTo = "", search = "" } = {}) {
+  const where = ["p.branch_id = ?"];
+  const params = [branchId];
+  if (status) {
+    where.push("p.status = ?");
+    params.push(status);
+  }
+  if (provider) {
+    where.push("p.provider = ?");
+    params.push(provider);
+  }
+  if (method) {
+    where.push("p.payment_method = ?");
+    params.push(method);
+  }
+  if (dateFrom) {
+    where.push("p.created_at >= ?");
+    params.push(`${dateFrom} 00:00:00`);
+  }
+  if (dateTo) {
+    where.push("p.created_at <= ?");
+    params.push(`${dateTo} 23:59:59`);
+  }
+  if (search) {
+    where.push("(u.full_name LIKE ? OR u.member_code = ? OR u.phone LIKE ? OR i.invoice_number = ?)");
+    params.push(`%${search}%`, search, `%${search}%`, search);
+  }
+  return { where: where.join(" AND "), params };
+}
+
+// Admin payments list. branchId is REQUIRED (server-derived effective
+// branch); empty means no rows, same convention as tasks/attendance.
+// `all: true` (exports) returns up to 10k rows without pagination.
+async function listPayments(filters = {}, { page = 1, pageSize = 25, all = false } = {}) {
+  ensureDatabase();
+  if (!filters.branchId) {
+    return { items: [], pagination: { page: 1, pageSize, total: 0 }, totals: { completed: 0, count: 0 } };
+  }
+  const { where, params } = paymentFilters(filters);
+  const limit = all ? 10000 : Math.max(1, Math.min(Number(pageSize) || 25, 100));
+  const currentPage = all ? 1 : Math.max(1, Number(page) || 1);
+  const offset = (currentPage - 1) * limit;
+  const from = `FROM payments p
+     JOIN users u ON u.id = p.user_id
+     LEFT JOIN plans pl ON pl.id = p.plan_id
+     LEFT JOIN invoices i ON i.id = p.invoice_id
+     LEFT JOIN admin_users a ON a.id = COALESCE(p.completed_by, p.created_by)
+     WHERE ${where}`;
+  const rows = await query(
+    `SELECT p.id, p.user_id, u.full_name AS member, u.member_code, p.plan_id, pl.name_en AS plan_en, pl.name_ar AS plan_ar,
+       p.purpose, p.provider, p.payment_method, p.amount, p.currency, p.status, p.failure_reason, p.transaction_id,
+       p.invoice_id, i.invoice_number, i.tax_total, p.created_at, p.completed_at, a.full_name AS recorded_by
+     ${from}
+     ORDER BY p.created_at DESC, p.id DESC
+     LIMIT ${limit} OFFSET ${offset}`,
+    params
+  );
+  const totals = await query(
+    `SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN p.status = 'completed' THEN p.amount ELSE 0 END), 0) AS completed
+     ${from}`,
+    params
+  );
+  return {
+    items: rows,
+    pagination: { page: currentPage, pageSize: limit, total: Number(totals[0]?.total || 0) },
+    totals: { completed: Number(totals[0]?.completed || 0), count: Number(totals[0]?.total || 0) }
+  };
+}
+
 module.exports = {
   closeCheckoutAttempt,
+  createManualAttempt,
+  listPayments,
   completePayment,
   createCheckoutAttempt,
   createPayment,

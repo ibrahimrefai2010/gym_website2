@@ -1,3 +1,4 @@
+const excelExportService = require("../services/excelExportService");
 const invoiceRepository = require("../repositories/invoiceRepository");
 const invoicePdfService = require("../services/invoicePdfService");
 const userRepository = require("../repositories/userRepository");
@@ -85,7 +86,42 @@ async function pdf(req, res) {
   res.send(buffer);
 }
 
+const INVOICE_EXPORT_COLUMNS = [
+  { key: "invoice_number", en: "Invoice #", ar: "رقم الفاتورة", width: 20 },
+  { key: "issued_at", en: "Issued", ar: "تاريخ الإصدار", type: "datetime", width: 18 },
+  { key: "customer", en: "Buyer", ar: "المشتري", width: 26 },
+  { key: "member_code", en: "Member ID", ar: "رقم العضو", width: 14 },
+  { key: "subtotal", en: "Subtotal (SAR)", ar: "المجموع قبل الضريبة", type: "money", width: 16 },
+  { key: "tax_total", en: "VAT (SAR)", ar: "ضريبة القيمة المضافة", type: "money", width: 14 },
+  { key: "total", en: "Total (SAR)", ar: "الإجمالي", type: "money", width: 14 },
+  { key: "balance_due", en: "Balance due", ar: "المتبقي", type: "money", width: 14 },
+  { key: "status", en: "Status", ar: "الحالة", width: 12 }
+];
+
+async function exportList(req, res) {
+  const lang = excelExportService.exportLang(req);
+  const filters = {
+    branchId: req.effectiveBranchId || "",
+    status: cleanString(req.query.status, 20),
+    dateFrom: cleanString(req.query.dateFrom, 20),
+    dateTo: cleanString(req.query.dateTo, 20),
+    search: cleanString(req.query.search, 120)
+  };
+  if (!filters.branchId) {
+    throw createHttpError(403, "No branch in scope.", "BRANCH_REQUIRED");
+  }
+  const data = await invoiceRepository.listInvoices({ ...filters, all: true });
+  await createLog("admin", req.user.id, "invoices.export", "invoices", null, { filters, rows: data.items.length }, req.ip, req.effectiveBranchId);
+  await excelExportService.sendWorkbook(
+    res,
+    `invoices-${excelExportService.stamp()}.xlsx`,
+    [{ name: { en: "Invoices", ar: "الفواتير" }, columns: INVOICE_EXPORT_COLUMNS, rows: data.items }],
+    lang
+  );
+}
+
 module.exports = {
+  exportList,
   create,
   detail,
   list,

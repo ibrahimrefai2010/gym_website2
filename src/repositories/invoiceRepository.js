@@ -145,7 +145,8 @@ function lineTotals(item) {
   };
 }
 
-async function listInvoices({ page = 1, pageSize = 25, branchId = "", userId = "", status = "", dateFrom = "", dateTo = "", search = "" } = {}) {
+// all: exports only -- up to 10k rows, no pagination.
+async function listInvoices({ page = 1, pageSize = 25, branchId = "", userId = "", status = "", dateFrom = "", dateTo = "", search = "", all = false } = {}) {
   ensureDatabase();
   const where = ["i.deleted_at IS NULL"];
   const params = [];
@@ -174,8 +175,8 @@ async function listInvoices({ page = 1, pageSize = 25, branchId = "", userId = "
     params.push(`%${search}%`, `%${search}%`, `%${search}%`);
   }
 
-  const limit = positiveInteger(pageSize, 25, 100);
-  const currentPage = positiveInteger(page, 1, 1000000);
+  const limit = all ? 10000 : positiveInteger(pageSize, 25, 100);
+  const currentPage = all ? 1 : positiveInteger(page, 1, 1000000);
   const offset = (currentPage - 1) * limit;
   // LIMIT/OFFSET as bound `?` params fails against mysql2's prepared
   // statements (execute()) with ER_WRONG_ARGUMENTS -- reproduced against a
@@ -187,8 +188,8 @@ async function listInvoices({ page = 1, pageSize = 25, branchId = "", userId = "
   // the same pattern customerRepository.js and userRepository.js already
   // use for their own LIMIT/OFFSET clauses.
   const rows = await query(
-    `SELECT i.id, i.invoice_number, i.status, i.issue_date, i.due_date, i.total,
-      i.paid_total, i.balance_due, i.currency, u.full_name AS customer, b.name_en AS branch
+    `SELECT i.id, i.invoice_number, i.status, i.issue_date, i.issued_at, i.due_date, i.subtotal, i.tax_total, i.total,
+      i.paid_total, i.balance_due, i.currency, u.full_name AS customer, u.member_code, b.name_en AS branch
      FROM invoices i
      JOIN users u ON u.id = i.user_id
      LEFT JOIN branches b ON b.id = i.branch_id

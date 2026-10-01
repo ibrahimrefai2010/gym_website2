@@ -25,6 +25,7 @@ router.get(
 router.use(authenticate, requireAdmin, attachEffectiveBranch);
 router.get("/", requirePermission("invoices:read"), asyncHandler(invoiceController.list));
 router.get("/overdue", requirePermission("invoices:read"), asyncHandler(invoiceController.overdue));
+router.get("/export", requirePermission("invoices:read"), asyncHandler(invoiceController.exportList));
 router.post("/", requirePermission("invoices:write"), asyncHandler(invoiceController.create));
 router.get("/:id", requirePermission("invoices:read"), asyncHandler(invoiceController.detail));
 router.patch("/:id/status", requirePermission("invoices:write"), asyncHandler(invoiceController.updateStatus));

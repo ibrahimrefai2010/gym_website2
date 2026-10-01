@@ -254,7 +254,7 @@ async function startMoyasarCheckout({ userId, planId, origin }) {
 // connection. Handles the races where the member's state changed between
 // checkout and payment (e.g. reception activated a membership meanwhile, or
 // the membership being renewed lapsed) without ever dropping paid days.
-async function applyPaidMembership(connection, payment) {
+async function applyPaidMembership(connection, payment, adminId = null) {
   const [activeRows] = await connection.execute(
     `SELECT id FROM memberships
      WHERE user_id = ? AND status = 'active' AND (end_date IS NULL OR end_date >= UTC_DATE())
@@ -267,7 +267,7 @@ async function applyPaidMembership(connection, payment) {
     return membershipRepository.extendOnConnection(connection, active.id, payment.plan_id);
   }
   if (payment.purpose === "new" && !active && payment.membership_id) {
-    return membershipRepository.activateOnConnection(connection, payment.membership_id, null);
+    return membershipRepository.activateOnConnection(connection, payment.membership_id, adminId);
   }
   if (active) {
     // Bought "new" but became active meanwhile -> extend instead, and retire
@@ -288,7 +288,7 @@ async function applyPaidMembership(connection, payment) {
     [payment.user_id, payment.plan_id, payment.branch_id]
   );
   await connection.execute("UPDATE payments SET membership_id = ? WHERE id = ?", [inserted.insertId, payment.id]);
-  return membershipRepository.activateOnConnection(connection, inserted.insertId, null);
+  return membershipRepository.activateOnConnection(connection, inserted.insertId, adminId);
 }
 
 async function buildPaymentInvoice(payment) {
@@ -314,7 +314,7 @@ async function buildPaymentInvoice(payment) {
         taxInclusive: true
       }
     ],
-    metadata: { paymentId: payment.id, provider: "moyasar" }
+    metadata: { paymentId: payment.id, provider: payment.provider }
   });
 }
 
@@ -365,7 +365,7 @@ async function finalizeMoyasarPayment(paymentId, { source = "unknown" } = {}) {
       return closeAttempt(payment, "failed", "amount_mismatch", invoice, source);
     }
     const paidAttempt = attempts.find((attempt) => String(attempt.status).toLowerCase() === "paid") || null;
-    return completeMoyasarPayment(payment, invoice, paidAttempt, source);
+    return settlePaidPayment(payment, { transactionId: paidAttempt?.id || payment.provider_reference, rawPayload: invoice, source });
   }
 
   if (MOYASAR_FAILED_STATUSES.includes(invoiceStatus) || MOYASAR_CLOSED_STATUSES.includes(invoiceStatus)) {
@@ -393,7 +393,10 @@ async function finalizeMoyasarPayment(paymentId, { source = "unknown" } = {}) {
   };
 }
 
-async function completeMoyasarPayment(payment, invoice, paidAttempt, source) {
+// Settles a paid attempt (Moyasar or manual/reception) in ONE transaction:
+// payment completed + membership activated/extended + ZATCA invoice issued.
+// Row lock + "still pending" check make it idempotent.
+async function settlePaidPayment(payment, { transactionId = null, rawPayload = null, source = "unknown", adminId = null } = {}) {
   // Prepared outside the transaction (no number allocated yet). If the
   // branch's VAT identity isn't configured the invoice can't be issued --
   // the member still paid, so complete the payment + membership anyway and
@@ -413,17 +416,17 @@ async function completeMoyasarPayment(payment, invoice, paidAttempt, source) {
     }
     await connection.execute(
       `UPDATE payments
-       SET status = 'completed', completed_at = UTC_TIMESTAMP(), transaction_id = ?, failure_reason = NULL,
-           checkout_url = NULL, raw_payload = ?, updated_at = UTC_TIMESTAMP()
+       SET status = 'completed', completed_at = UTC_TIMESTAMP(), completed_by = ?, transaction_id = COALESCE(?, transaction_id),
+           failure_reason = NULL, checkout_url = NULL, raw_payload = COALESCE(?, raw_payload), updated_at = UTC_TIMESTAMP()
        WHERE id = ?`,
-      [paidAttempt?.id || payment.provider_reference, JSON.stringify(invoice), payment.id]
+      [adminId, transactionId, rawPayload ? JSON.stringify(rawPayload) : null, payment.id]
     );
-    const membership = await applyPaidMembership(connection, payment);
+    const membership = await applyPaidMembership(connection, payment, adminId);
     let issued = null;
     if (preparedInvoice) {
       const [current] = await connection.execute("SELECT membership_id FROM payments WHERE id = ?", [payment.id]);
       preparedInvoice.payload.membershipId = current[0].membership_id;
-      issued = await invoiceRepository.insertPreparedInvoice(connection, preparedInvoice, null);
+      issued = await invoiceRepository.insertPreparedInvoice(connection, preparedInvoice, adminId);
       await connection.execute("UPDATE payments SET invoice_id = ? WHERE id = ?", [issued.id, payment.id]);
     }
     return { membership, invoice: issued };
@@ -433,9 +436,11 @@ async function completeMoyasarPayment(payment, invoice, paidAttempt, source) {
     return { id: payment.id, status: result.status, changed: false };
   }
 
-  await createLog("user", payment.user_id, "payment.complete", "payments", payment.id, { provider: "moyasar", source, invoiceId: result.invoice?.id || null }, null, payment.branch_id);
+  const actorType = adminId ? "admin" : "user";
+  const actorId = adminId || payment.user_id;
+  await createLog(actorType, actorId, "payment.complete", "payments", payment.id, { provider: payment.provider, source, invoiceId: result.invoice?.id || null }, null, payment.branch_id);
   if (result.invoice) {
-    await createLog("user", payment.user_id, "invoice.create", "invoices", result.invoice.id, { invoiceNumber: result.invoice.invoiceNumber, paymentId: payment.id }, null, payment.branch_id);
+    await createLog(actorType, actorId, "invoice.create", "invoices", result.invoice.id, { invoiceNumber: result.invoice.invoiceNumber, paymentId: payment.id }, null, payment.branch_id);
   }
   const amountLabel = `${payment.currency || "SAR"} ${Number(payment.amount || 0).toFixed(2)}`;
   await createMemberNotification(
@@ -448,12 +453,73 @@ async function completeMoyasarPayment(payment, invoice, paidAttempt, source) {
   );
 
   if (invoiceError) {
-    appLogger.error({ paymentId: payment.id, code: invoiceError.code }, "moyasar.invoice_not_issued");
+    appLogger.error({ paymentId: payment.id, code: invoiceError.code }, "payment.invoice_not_issued");
     await taskService
       .createTaskForPaymentIssue(payment, `Invoice not issued for paid payment #${payment.id}: ${invoiceError.message}`)
       .catch(() => {});
   }
-  return { id: payment.id, status: "completed", changed: true, membership: result.membership, invoice: result.invoice };
+  return {
+    id: payment.id,
+    status: "completed",
+    changed: true,
+    membership: result.membership,
+    invoice: result.invoice,
+    invoiceError: invoiceError ? invoiceError.message : null
+  };
+}
+
+const MANUAL_METHODS = ["cash", "card", "bank_transfer"];
+
+// Reception records a payment taken in person (cash / card terminal / bank
+// transfer). Same settle path as an online payment, so membership + invoice
+// + payment always land together. `branchId` is the admin's server-derived
+// effective branch: a member from another branch is a 404. idempotencyKey
+// (client-generated per form submission) makes a double-submit return the
+// first result instead of charging twice.
+async function recordManualPayment(adminId, branchId, input = {}) {
+  const method = String(input.method || "");
+  if (!MANUAL_METHODS.includes(method)) {
+    throw createHttpError(422, "Choose cash, card or bank transfer.", "PAYMENT_METHOD_INVALID");
+  }
+  const idempotencyKey = String(input.idempotencyKey || "").trim().slice(0, 100);
+  if (!/^[\w-]{8,100}$/.test(idempotencyKey)) {
+    throw createHttpError(422, "Missing submission key. Refresh and try again.", "IDEMPOTENCY_KEY_REQUIRED");
+  }
+  const existing = await paymentRepository.findByProviderReference("manual", `idem:${idempotencyKey}`);
+  if (existing) {
+    return { id: existing.id, status: existing.status, duplicate: true, invoiceId: existing.invoice_id };
+  }
+
+  const user = await userRepository.findById(input.userId);
+  if (!user || Number(user.branch_id) !== Number(branchId)) {
+    throw createHttpError(404, "Member not found.", "CUSTOMER_NOT_FOUND");
+  }
+  const plan = await planRepository.getPlan(input.planId);
+  if (!plan || !plan.isActive || Number(plan.branchId) !== Number(branchId)) {
+    throw createHttpError(404, "Plan not found.", "PLAN_NOT_FOUND");
+  }
+
+  const active = await membershipRepository.activeMembership(user.id);
+  const purpose = active ? "renewal" : "new";
+  const created = await paymentRepository.createManualAttempt({
+    userId: user.id,
+    branchId: Number(branchId),
+    planId: plan.id,
+    amount: plan.price,
+    purpose,
+    membershipId: active ? active.id : null,
+    method,
+    reference: `idem:${idempotencyKey}`,
+    externalReference: String(input.reference || "").trim().slice(0, 190) || null,
+    adminId
+  });
+  if (created.duplicate) {
+    const again = await paymentRepository.getPayment(created.paymentId);
+    return { id: again.id, status: again.status, duplicate: true, invoiceId: again.invoice_id };
+  }
+  const payment = await paymentRepository.getPayment(created.paymentId);
+  const settled = await settlePaidPayment(payment, { transactionId: payment.transaction_id, source: "reception", adminId });
+  return { ...settled, invoiceId: settled.invoice?.id || null, invoiceNumber: settled.invoice?.invoiceNumber || null, purpose };
 }
 
 async function createMemberNotification(userId, type, titleAr, titleEn, bodyAr, bodyEn) {
@@ -588,7 +654,10 @@ async function completePayment(adminId, paymentId, context = {}) {
 }
 
 module.exports = {
+  MANUAL_METHODS,
   completePayment,
+  recordManualPayment,
+  settlePaidPayment,
   finalizeMoyasarPayment,
   handleMoyasarWebhook,
   memberPaymentStatus,

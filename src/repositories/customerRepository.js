@@ -60,10 +60,10 @@ async function listCustomers({ page = 1, pageSize = 25, search = "", status = ""
   const params = [];
   if (search) {
     where.push(`(
-      u.full_name LIKE ? OR u.email LIKE ? OR u.phone LIKE ?
+      u.full_name LIKE ? OR u.email LIKE ? OR u.phone LIKE ? OR u.member_code = ?
       OR cp.national_id LIKE ? OR cp.passport_number LIKE ? OR cp.residency_number LIKE ?
     )`);
-    params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`, search, `%${search}%`, `%${search}%`, `%${search}%`);
   }
   if (status) {
     where.push("u.status = ?");
