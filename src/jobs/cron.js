@@ -3,6 +3,7 @@ const { hasDatabaseConfig, query } = require("../config/database");
 const tokenRepository = require("../repositories/tokenRepository");
 const taskService = require("../services/taskService");
 const paymentService = require("../services/paymentService");
+const backupService = require("../services/backupService");
 const customerRepository = require("../repositories/customerRepository");
 const membershipRepository = require("../repositories/membershipRepository");
 const settingsRepository = require("../repositories/settingsRepository");
@@ -177,6 +178,21 @@ cron.schedule(
   },
   { timezone: env.timezone }
 );
+
+// Scheduled database backup (BACKUP_CRON, e.g. "0 3 * * *" = 03:00 Riyadh).
+if (env.backupCron && cron.validate(env.backupCron)) {
+  cron.schedule(
+    env.backupCron,
+    async () => {
+      try {
+        await backupService.createBackup({ source: "schedule" });
+      } catch (error) {
+        appLogger.error({ error: error.message, details: error.details }, "Scheduled backup failed");
+      }
+    },
+    { timezone: env.timezone }
+  );
+}
 
 // Moyasar safety net: settles pending online payments whose webhook was
 // missed and closes abandoned checkouts (see paymentService.finalizeMoyasarPayment).

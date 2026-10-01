@@ -1,7 +1,7 @@
 const express = require("express");
 const cmsController = require("../controllers/cmsController");
 const rbacRepository = require("../repositories/rbacRepository");
-const { authenticate, requireAdmin, requireAnyPermission } = require("../middleware/auth");
+const { authenticate, requireAdmin, requireAnyPermission, requirePermission } = require("../middleware/auth");
 const { attachEffectiveBranch } = require("../middleware/adminBranchScope");
 const { asyncHandler } = require("../utils/asyncHandler");
 const { createHttpError } = require("../utils/httpError");
@@ -30,5 +30,7 @@ router.get("/faqs", contentAdmin, asyncHandler(cmsController.listFaqs));
 router.post("/faqs", contentAdmin, asyncHandler(cmsController.saveFaq));
 router.delete("/faqs/:id", contentAdmin, asyncHandler(cmsController.deleteFaq));
 router.put("/order/:type", canReorder, asyncHandler(cmsController.reorder));
+router.get("/business", requirePermission("settings:write"), asyncHandler(cmsController.getBusiness));
+router.put("/business", requirePermission("settings:write"), asyncHandler(cmsController.saveBusiness));
 
 module.exports = router;

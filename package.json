@@ -11,6 +11,9 @@
     "db:migrate": "node scripts/migrate.js up",
     "db:rollback": "node scripts/migrate.js down",
     "db:seed": "node src/db/seed.js",
+    "db:seed:staging": "node scripts/staging-seed.js",
+    "db:backup": "node scripts/backup-db.js",
+    "import:template": "node scripts/generate-import-template.js",
     "admin:ensure": "node scripts/ensure-admin.js",
     "check": "node scripts/check.js",
     "test": "node --test test/*.test.js"

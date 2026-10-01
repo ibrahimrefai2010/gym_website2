@@ -2729,6 +2729,83 @@
     setupReorder();
   }
 
+  // Branch legal / VAT identity (used on that branch's tax invoices).
+  const BUSINESS_FIELDS = [
+    ["legalEntityNameAr", "admin.biz.nameAr", "rtl"], ["legalEntityNameEn", "admin.biz.nameEn", "ltr"],
+    ["vatNumber", "admin.biz.vat", "ltr"], ["crNumber", "admin.biz.cr", "ltr"],
+    ["vatRate", "admin.biz.vatRate", "ltr"], ["vatEffectiveDate", "admin.biz.vatDate", "ltr"],
+    ["streetAr", "admin.biz.streetAr", "rtl"], ["streetEn", "admin.biz.streetEn", "ltr"],
+    ["districtAr", "admin.biz.districtAr", "rtl"], ["districtEn", "admin.biz.districtEn", "ltr"],
+    ["cityAr", "admin.biz.cityAr", "rtl"], ["cityEn", "admin.biz.cityEn", "ltr"],
+    ["buildingNumber", "admin.biz.building", "ltr"], ["postalCode", "admin.biz.postal", "ltr"]
+  ];
+
+  async function loadBusinessForm() {
+    try {
+      const data = await window.GymApi.request("/api/v1/cms/business");
+      setHtml(
+        "#businessFields",
+        BUSINESS_FIELDS.map(([key, label, dir]) => {
+          const type = key === "vatEffectiveDate" ? "date" : key === "vatRate" ? "number" : "text";
+          const extra = key === "vatNumber" ? ' inputmode="numeric" pattern="\\d{15}" maxlength="15"' : key === "vatRate" ? ' min="0" max="100" step="0.01"' : "";
+          return `<div class="field"><label for="biz_${key}">${escapeHtml(t(label))}</label><input id="biz_${key}" name="${key}" type="${type}" dir="${dir}" value="${escapeHtml(data.values?.[key] ?? "")}"${extra}></div>`;
+        }).join("")
+      );
+    } catch (error) {
+      setMessage("#businessMessage", error.message, false);
+    }
+  }
+
+  function setupBusiness() {
+    document.querySelector("#businessForm")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const values = Object.fromEntries(new FormData(event.currentTarget).entries());
+      if (!window.confirm(t("admin.biz.confirm").replace("{branch}", branchSuffix()))) return;
+      try {
+        await window.GymApi.request("/api/v1/cms/business", { method: "PUT", body: JSON.stringify({ values }) });
+        setMessage("#businessMessage", t("admin.cms.saved"), true);
+      } catch (error) {
+        setMessage("#businessMessage", error.message, false);
+      }
+    });
+    document.querySelector('[data-admin-tab="settings"]')?.addEventListener("click", () => loadBusinessForm());
+  }
+
+  // Database backups (Admin -> Settings), shown only if the role may read them.
+  async function loadBackups() {
+    const panel = document.querySelector("#backupPanel");
+    try {
+      const items = await window.GymApi.request("/api/v1/admin/backups");
+      panel.hidden = false;
+      setHtml(
+        "#backupList",
+        items.length
+          ? items.slice(0, 10).map((item) => `<li>${escapeHtml(item.filename)}<br><small class="muted">${escapeHtml(formatDate(item.createdAt))} ${escapeHtml(formatTime(item.createdAt))} · ${escapeHtml((item.size / 1024).toFixed(0))} KB</small></li>`).join("")
+          : `<li class="muted">${escapeHtml(t("admin.bk.none"))}</li>`
+      );
+    } catch (_error) {
+      panel.hidden = true;
+    }
+  }
+
+  function setupBackups() {
+    document.querySelector("#backupNow")?.addEventListener("click", async (event) => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      setMessage("#backupMessage", t("admin.bk.running"), true);
+      try {
+        const result = await window.GymApi.request("/api/v1/admin/backups", { method: "POST", body: "{}" });
+        setMessage("#backupMessage", t("admin.bk.done").replace("{file}", result.filename), true);
+        loadBackups();
+      } catch (error) {
+        setMessage("#backupMessage", error.message, false);
+      } finally {
+        button.disabled = false;
+      }
+    });
+    document.querySelector('[data-admin-tab="settings"]')?.addEventListener("click", () => loadBackups());
+  }
+
   // Leads/CRM (Part 2): same on-demand, filtered + paginated pattern as
   // loadTasks above (replaces the old one-shot /api/v1/messages fetch inside
   // load()'s Promise.all, which returned a flat, unfiltered array of up to
@@ -4314,6 +4391,8 @@
     setupStaff();
     setupAudit();
     setupCms();
+    setupBusiness();
+    setupBackups();
     setupSession();
     setupBranchSwitcher();
     load();

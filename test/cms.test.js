@@ -188,3 +188,19 @@ test("plans: features round-trip, reorder is branch-checked, in-use plans cannot
   assert.equal(del.status, 409, JSON.stringify(del.json));
   assert.equal((await api("DELETE", `/api/v1/plans/${b.id}`, { token: ctx.womenAdmin.token })).status, 200);
 });
+
+test("business (VAT) identity is per branch and validated", { skip: noDb }, async () => {
+  if (!ctx.ready) return;
+  const before = await api("GET", "/api/v1/cms/business", { token: ctx.womenAdmin.token });
+  assert.equal(before.status, 200);
+  assert.equal(before.json.data.branchId, ctx.women);
+  const original = before.json.data.values.crNumber;
+  const bad = await api("PUT", "/api/v1/cms/business", { token: ctx.womenAdmin.token, body: { values: { vatNumber: "123" } } });
+  assert.equal(bad.status, 422);
+  const ok = await api("PUT", "/api/v1/cms/business", { token: ctx.womenAdmin.token, body: { values: { crNumber: `CR${RUN}` } } });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.json.data.crNumber, `CR${RUN}`);
+  const main = await api("GET", "/api/v1/cms/business", { token: ctx.mainAdmin.token });
+  assert.notEqual(main.json.data.values.crNumber, `CR${RUN}`);
+  await api("PUT", "/api/v1/cms/business", { token: ctx.womenAdmin.token, body: { values: { crNumber: original || "" } } });
+});

@@ -753,6 +753,27 @@
         </section>
 
         <section class="admin-section" data-admin-section="settings">
+          <div class="admin-panel" id="backupPanel" hidden>
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.bk.title">النسخ الاحتياطي لقاعدة البيانات</h2>
+              <button class="btn small secondary" type="button" id="backupNow" data-i18n="admin.bk.now">نسخ احتياطي الآن</button>
+            </div>
+            <p class="muted" data-i18n="admin.bk.help">نسخة كاملة مضغوطة تُحفظ على الخادم، وتُحذف القديمة تلقائيًا. انسخها خارج الخادم بانتظام.</p>
+            <ul class="note-list" id="backupList"></ul>
+            <p class="form-message" id="backupMessage" role="status"></p>
+          </div>
+
+          <div class="admin-panel">
+            <div class="admin-panel-header">
+              <h2 data-i18n="admin.biz.title">البيانات النظامية والضريبية للفرع</h2>
+            </div>
+            <p class="muted" data-i18n="admin.biz.help">تظهر في الفواتير الضريبية لهذا الفرع. لكل فرع رقم ضريبي مستقل، ولا يمكن إصدار فواتير بدونه.</p>
+            <form class="auth-form" id="businessForm" novalidate>
+              <div class="form-grid" id="businessFields"></div>
+              <button class="btn" type="submit" data-i18n="admin.cms.save">حفظ</button>
+              <p class="form-message" id="businessMessage" role="status"></p>
+            </form>
+          </div>
           <div class="admin-panel">
             <div class="admin-panel-header">
               <h2 data-i18n="admin.settings">الإعدادات</h2>

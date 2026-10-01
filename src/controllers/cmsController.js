@@ -10,6 +10,7 @@
 const { query, transaction } = require("../config/database");
 const faqRepository = require("../repositories/faqRepository");
 const settingsRepository = require("../repositories/settingsRepository");
+const businessSettingsRepository = require("../repositories/businessSettingsRepository");
 const { assertBranchOwnership, canSwitchBranch, resolveWriteBranchId } = require("../security/branchAccess");
 const { cleanString } = require("../utils/validator");
 const { createHttpError } = require("../utils/httpError");
@@ -64,6 +65,32 @@ async function saveContact(req, res) {
   }
   await createLog("admin", req.user.id, "cms.contact.update", "settings", null, { keys: Object.keys(updates) }, req.ip, branchId);
   res.json({ success: true, data: { saved: Object.keys(updates) } });
+}
+
+// ---- Business (legal / VAT) identity per branch ----
+// Each branch is its own VAT registration; invoices read this row.
+
+const BUSINESS_KEYS = [
+  "legalEntityNameAr", "legalEntityNameEn", "vatNumber", "crNumber", "vatRate", "vatEffectiveDate",
+  "streetAr", "streetEn", "districtAr", "districtEn", "cityAr", "cityEn", "buildingNumber", "postalCode"
+];
+
+async function getBusiness(req, res) {
+  const branchId = await resolveWriteBranchId(req);
+  res.json({ success: true, data: { branchId, values: (await businessSettingsRepository.get(branchId)) || {} } });
+}
+
+async function saveBusiness(req, res) {
+  const branchId = await resolveWriteBranchId(req);
+  const input = req.body?.values || {};
+  const payload = {};
+  for (const key of BUSINESS_KEYS) {
+    if (input[key] !== undefined) payload[key] = key === "vatRate" ? input[key] : cleanString(input[key], 200);
+  }
+  const before = await businessSettingsRepository.get(branchId);
+  const after = await businessSettingsRepository.update(payload, req.user.id, branchId);
+  await createLog("admin", req.user.id, "business_settings.update", "business_settings", null, { before, after }, req.ip, branchId);
+  res.json({ success: true, data: after });
 }
 
 // ---- FAQs ----
@@ -137,4 +164,4 @@ async function reorder(req, res) {
   res.json({ success: true, data: { ids } });
 }
 
-module.exports = { CONTACT_KEYS, deleteFaq, getContact, listFaqs, reorder, saveContact, saveFaq };
+module.exports = { CONTACT_KEYS, getBusiness, saveBusiness, deleteFaq, getContact, listFaqs, reorder, saveContact, saveFaq };
