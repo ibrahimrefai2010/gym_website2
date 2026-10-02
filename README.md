@@ -34,6 +34,16 @@ npm test
 
 Dev data is disposable. To start clean: drop the `muscle_fitness` database, then run the five commands above from `mysql ... schema.sql`. Migrations are reversible (`npm run db:rollback -- <migration_name>`).
 
+### MySQL / MariaDB
+
+Supported: MySQL 8.0.19+ and MariaDB 10.5+ (the migrations avoid MySQL-only syntax such as `DROP CHECK`). MySQL/MariaDB DDL is not transactional, so a migration that fails part-way keeps the statements that already ran and a plain re-run then stops on "duplicate column / can't drop". After fixing the cause, finish it with:
+
+```bash
+npm run db:migrate -- --resume
+```
+
+`--resume` skips only "already applied" errors (duplicate column/key/foreign key, already-dropped index) and prints every statement it skipped; any other error still stops the run.
+
 ### Demo data (staging only)
 
 `npm run db:seed:staging` adds — per branch — plan features, coaches, FAQs, members in every state (active, expiring, expired, frozen, at-risk, no membership), check-ins, a lead with a follow-up task, and a paid reception payment with its ZATCA invoice. It is idempotent and refuses to run with `NODE_ENV=production`. Seeded members sign in with `<state>.<branch>@staging.local` / `Staging@12345` (e.g. `active.women@staging.local`). `scripts/demo-seed.js` keeps the original one-demo-member-per-branch seed (`demo@muscle-fitness.local`).

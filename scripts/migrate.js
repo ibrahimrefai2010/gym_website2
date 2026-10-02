@@ -42,10 +42,31 @@ async function migrationFiles(direction) {
     }));
 }
 
-async function runSqlFile(filePath) {
+// Errors that only mean "this statement was already applied" (column/key/FK
+// already exists, or already gone). MySQL/MariaDB DDL is not transactional, so
+// a migration that failed part-way leaves its earlier statements in place;
+// `--resume` skips exactly these and re-runs the rest. Each skip is printed.
+const ALREADY_APPLIED_ERRNOS = new Set([1050, 1060, 1061, 1068, 1091, 1553, 1826, 3940]);
+function isAlreadyApplied(error) {
+  if (ALREADY_APPLIED_ERRNOS.has(error?.errno)) {
+    return true;
+  }
+  // MariaDB reports a duplicate foreign-key name as a generic 1005 / errno 121.
+  return error?.errno === 1005 && /errno:\s*121|duplicate/i.test(error.message || "");
+}
+
+async function runSqlFile(filePath, { resume = false } = {}) {
   const sql = await fs.readFile(filePath, "utf8");
   for (const statement of splitSql(sql)) {
-    await query(statement);
+    try {
+      await query(statement);
+    } catch (error) {
+      if (!resume || !isAlreadyApplied(error)) {
+        throw error;
+      }
+      const firstLine = statement.split(/\r?\n/).find((line) => line.trim() && !line.trim().startsWith("--")) || statement;
+      process.stdout.write(`  skipped (already applied): ${firstLine.trim().slice(0, 100)}\n`);
+    }
   }
 }
 
@@ -106,7 +127,7 @@ async function ensureBaseSchema() {
   return true;
 }
 
-async function migrateUp() {
+async function migrateUp({ resume = false } = {}) {
   await ensureDatabaseExists();
   const initializedBase = await ensureBaseSchema();
   if (initializedBase) {
@@ -121,7 +142,7 @@ async function migrateUp() {
     if (applied.has(file.migration)) {
       continue;
     }
-    await runSqlFile(file.path);
+    await runSqlFile(file.path, { resume });
     await query("INSERT INTO schema_migrations (migration) VALUES (?)", [file.migration]);
     process.stdout.write(`Applied ${file.migration}\n`);
     appliedCount += 1;
@@ -165,14 +186,14 @@ async function main() {
 
   const direction = process.argv[2] || "up";
   if (direction === "up") {
-    await migrateUp();
+    await migrateUp({ resume: process.argv.includes("--resume") });
     return;
   }
   if (direction === "down") {
     await migrateDown(process.argv[3]);
     return;
   }
-  throw new Error("Usage: node scripts/migrate.js [up|down] [migration_name]");
+  throw new Error("Usage: node scripts/migrate.js [up [--resume]|down] [migration_name]");
 }
 
 main()

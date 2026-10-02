@@ -75,7 +75,8 @@ ALTER TABLE invoice_counters
 -- 8. business_settings: was a fixed singleton (id TINYINT PK, CHECK id=1)
 --    holding one shared VAT/CR registration. Two separate legal VAT
 --    registrations means one row per branch now.
-ALTER TABLE business_settings DROP CHECK chk_business_settings_singleton;
+-- DROP CONSTRAINT (not MySQL-only DROP CHECK) so MariaDB 10.2+ and MySQL 8.0.19+ both accept it.
+ALTER TABLE business_settings DROP CONSTRAINT chk_business_settings_singleton;
 ALTER TABLE business_settings MODIFY COLUMN id INT UNSIGNED NOT NULL AUTO_INCREMENT;
 ALTER TABLE business_settings ADD COLUMN branch_id INT UNSIGNED NULL AFTER id;
 UPDATE business_settings SET branch_id = 1 WHERE id = 1;
