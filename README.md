@@ -64,7 +64,7 @@ Dev data is disposable. To start clean: drop the `muscle_fitness` database, then
 | `SMTP_*`, `EMAIL_FROM`, `OTP_EXPIRY_MINUTES` | Password-reset email |
 | `RATE_LIMIT_LOGIN`, `RATE_LIMIT_REGISTER`, `RATE_LIMIT_OTP`, `RATE_LIMIT_ADMIN_LOGIN` | Abuse limits |
 | `MOYASAR_MODE` (`test`/`live`), `MOYASAR_SECRET_KEY`, `MOYASAR_PUBLISHABLE_KEY`, `MOYASAR_WEBHOOK_SECRET`, `MOYASAR_INVOICE_TTL_MINUTES` | Online payments (see below) |
-| `AI_ASSISTANT_ENABLED`, `ANTHROPIC_API_KEY`, `AI_MODEL`, `AI_EFFORT`, `AI_RATE_LIMIT_PER_HOUR` | Admin AI assistant (off by default) |
+| `AI_ASSISTANT_ENABLED`, `GEMINI_API_KEY`, `AI_MODEL` (default `gemini-2.5-flash`), `AI_RATE_LIMIT_PER_HOUR` | Admin AI assistant (off by default) |
 | `GA4_MEASUREMENT_ID`, `META_PIXEL_ID` | Analytics — loaded only after the visitor accepts analytics cookies |
 | `BACKUP_CRON`, `BACKUP_RETENTION_DAYS`, `MYSQLDUMP_PATH` | Scheduled database backups |
 | `PAYMENT_SUCCESS_URL`, `PAYMENT_CANCEL_URL`, `STRIPE_*` | Retired Stripe adapter only (not offered in the UI) |
@@ -87,7 +87,7 @@ A reconcile job runs every 10 minutes to settle payments whose webhook was misse
 
 ## AI assistant
 
-Set `AI_ASSISTANT_ENABLED=true` and `ANTHROPIC_API_KEY` to turn it on (without a key it gives basic rule-based answers). It answers questions about the viewer's branch using **read-only** tools that run the app's own queries; it can draft messages but cannot change any data, never receives member contact details, is rate-limited per admin and every question is audit-logged. Turning the flag off removes the routes and the tab.
+Runs on the **Google Gemini API free tier** (no card needed): create a key at <https://aistudio.google.com/apikey>, then set `AI_ASSISTANT_ENABLED=true` and `GEMINI_API_KEY` (without a key it gives basic rule-based answers). The default model is `gemini-2.5-flash`; `gemini-2.5-flash-lite` has a higher daily quota. When the free quota is used up the panel says so and works again after it resets. Note: Google may use free-tier prompts to improve its products, so keep the assistant to figures and names (it already never sends phone numbers or emails); move to a paid key if that is a concern. It answers questions about the viewer's branch using **read-only** tools that run the app's own queries; it can draft messages but cannot change any data, never receives member contact details, is rate-limited per admin and every question is audit-logged. Turning the flag off removes the routes and the tab.
 
 ## Backups
 

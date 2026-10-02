@@ -1,5 +1,5 @@
 // AI assistant (Part 2 §2.3) -- real app + real DB, with a local mock of the
-// Anthropic Messages API (ANTHROPIC_BASE_URL) so no real model is called.
+// Gemini generateContent API (GEMINI_API_BASE) so no real model is called.
 //
 // Covers: the tool loop runs the requested read-only tools and feeds back
 // results that only contain the admin's own branch (and no phone numbers);
@@ -8,7 +8,7 @@
 // every question is audit-logged; the feature flag turns it off; insights.
 
 process.env.AI_ASSISTANT_ENABLED = "true";
-process.env.ANTHROPIC_API_KEY = "sk-ant-test-mock";
+process.env.GEMINI_API_KEY = "gemini-test-mock";
 
 const http = require("http");
 const test = require("node:test");
@@ -22,21 +22,12 @@ const mockServer = http.createServer((req, res) => {
   req.on("end", () => {
     const parsed = JSON.parse(body || "{}");
     mock.requests.push({ url: req.url, headers: req.headers, body: parsed });
-    const next = mock.script.shift() || { stop_reason: "end_turn", content: [{ type: "text", text: "Done." }] };
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(
-      JSON.stringify({
-        id: `msg_${mock.requests.length}`,
-        type: "message",
-        role: "assistant",
-        model: parsed.model,
-        stop_sequence: null,
-        usage: { input_tokens: 10, output_tokens: 10 },
-        ...next
-      })
-    );
+    const next = mock.script.shift() || { candidates: [{ content: { role: "model", parts: [{ text: "Done." }] }, finishReason: "STOP" }] };
+    res.writeHead(next.httpStatus || 200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(next.httpStatus ? { error: { message: next.message || "mock error" } } : { modelVersion: "gemini-mock", ...next }));
   });
 });
+const modelTurn = (...parts) => ({ candidates: [{ content: { role: "model", parts }, finishReason: "STOP" }] });
 
 let query;
 let getPool;
@@ -92,7 +83,7 @@ async function expiringMember(branchId, label) {
 
 test.before(async () => {
   await new Promise((resolve) => mockServer.listen(0, resolve));
-  process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${mockServer.address().port}`;
+  process.env.GEMINI_API_BASE = `http://127.0.0.1:${mockServer.address().port}/v1beta`;
   ({ query, getPool, hasDatabaseConfig } = require("../src/config/database"));
   if (!hasDatabaseConfig()) return;
   const app = require("../src/app");
@@ -146,15 +137,12 @@ test("tool loop: results stay inside the admin's branch, no contact details, per
   if (!ctx.ready) return t.skip("no DB");
   mock.requests = [];
   mock.script = [
-    {
-      stop_reason: "tool_use",
-      content: [
-        { type: "text", text: "Checking." },
-        { type: "tool_use", id: "tu_1", name: "list_expiring_memberships", input: { within_days: 7 } },
-        { type: "tool_use", id: "tu_2", name: "get_dashboard_kpis", input: {} }
-      ]
-    },
-    { stop_reason: "end_turn", content: [{ type: "text", text: "Two members expire this week." }] }
+    modelTurn(
+      { text: "Checking." },
+      { functionCall: { name: "list_expiring_memberships", args: { within_days: 7 } } },
+      { functionCall: { name: "get_dashboard_kpis", args: {} } }
+    ),
+    modelTurn({ text: "Two members expire this week." })
   ];
   const res = await api("POST", "/api/v1/ai/assistant", { token: ctx.mainAdmin.token, body: { prompt: "Who expires this week?", branchId: ctx.women } });
   assert.equal(res.status, 200, JSON.stringify(res.json));
@@ -162,18 +150,20 @@ test("tool loop: results stay inside the admin's branch, no contact details, per
   assert.deepEqual(res.json.data.toolsUsed.sort(), ["get_dashboard_kpis", "list_expiring_memberships"]);
 
   const first = mock.requests[0].body;
-  assert.equal(first.model, "claude-opus-5-5");
-  assert.equal(first.fallbacks, "default");
-  assert.match(String(mock.requests[0].headers["anthropic-beta"]), /server-side-fallback-2026-07-01/);
-  const toolNames = first.tools.map((tool) => tool.name);
+  assert.match(mock.requests[0].url, /\/models\/gemini-2\.5-flash:generateContent$/);
+  assert.equal(mock.requests[0].headers["x-goog-api-key"], "gemini-test-mock");
+  const declarations = first.tools[0].functionDeclarations;
+  const toolNames = declarations.map((tool) => tool.name);
   assert.ok(toolNames.includes("list_expiring_memberships"));
   assert.ok(!toolNames.includes("get_vat_summary"), "no tax_reports:read -> no VAT tool");
   assert.ok(!toolNames.includes("get_revenue"), "no reports:read -> no revenue tool");
-  assert.match(first.system, /Main Branch/);
+  assert.ok(!JSON.stringify(declarations).includes("additionalProperties"), "schema is Gemini-compatible");
+  assert.equal(declarations.find((tool) => tool.name === "get_dashboard_kpis").parameters, undefined, "empty-parameter tools omit parameters");
+  assert.match(first.systemInstruction.parts[0].text, /Main Branch/);
 
   const second = mock.requests[1].body;
-  const toolResults = second.messages[second.messages.length - 1].content;
-  const expiring = JSON.parse(toolResults.find((r) => r.tool_use_id === "tu_1").content);
+  const toolResults = second.contents[second.contents.length - 1].parts;
+  const expiring = toolResults.find((r) => r.functionResponse.name === "list_expiring_memberships").functionResponse.response.result;
   const names = expiring.members.map((m) => m.name);
   assert.ok(names.includes(ctx.mainMember.full_name));
   assert.ok(!names.includes(ctx.womenMember.full_name), "spoofed branchId ignored");
@@ -191,10 +181,23 @@ test("consolidated scope is refused for a branch-scoped admin; refusals are hand
   const denied = await api("POST", "/api/v1/ai/assistant?scope=all", { token: ctx.mainAdmin.token, body: { prompt: "All branches?" } });
   assert.equal(denied.status, 403);
 
-  mock.script = [{ stop_reason: "refusal", content: [] }];
+  mock.script = [{ promptFeedback: { blockReason: "SAFETY" } }];
   const refused = await api("POST", "/api/v1/ai/assistant", { token: ctx.mainAdmin.token, body: { prompt: "something" } });
   assert.equal(refused.status, 200);
   assert.equal(refused.json.data.refused, true);
+});
+
+test("free-tier quota errors give a friendly message; thinking parts are not shown", async (t) => {
+  if (!ctx.ready) return t.skip("no DB");
+  mock.script = [{ httpStatus: 429, message: "quota exceeded" }];
+  const limited = await api("POST", "/api/v1/ai/assistant", { token: ctx.mainAdmin.token, body: { prompt: "anything" } });
+  assert.equal(limited.status, 503);
+  assert.match(limited.json.message || limited.json.error?.message || JSON.stringify(limited.json), /free usage limit/);
+
+  mock.script = [modelTurn({ text: "internal reasoning", thought: true }, { text: "Final answer." })];
+  const ok = await api("POST", "/api/v1/ai/assistant", { token: ctx.mainAdmin.token, body: { prompt: "hello" } });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.json.data.answer, "Final answer.");
 });
 
 test("insights work and the feature flag switches the assistant off", async (t) => {

@@ -1,7 +1,7 @@
 // In-dashboard AI assistant (Part 2 §2.3).
 //
 // How it works:
-//  - Claude answers staff questions by calling a fixed set of READ-ONLY
+//  - Gemini answers staff questions by calling a fixed set of READ-ONLY
 //    tools defined here. Each tool runs this app's own parameterized
 //    queries, bound (by closure) to the branch list the server resolved for
 //    this admin -- the model never chooses a branch, never sees SQL, and
@@ -14,12 +14,11 @@
 //  - Member contact details (phone/email) are never sent to the model.
 //  - Every question + answer is written to ai_logs and the audit log.
 //  - AI_ASSISTANT_ENABLED=false removes the feature (routes 404, tab hidden).
-//    With the flag on but no ANTHROPIC_API_KEY, a small rule-based fallback
+//    With the flag on but no GEMINI_API_KEY, a small rule-based fallback
 //    answers the common questions so the panel still works offline.
 
 const fs = require("fs");
 const path = require("path");
-const Anthropic = require("@anthropic-ai/sdk");
 const { env } = require("../config/env");
 const { query } = require("../config/database");
 const reportRepository = require("../repositories/reportRepository");
@@ -32,13 +31,44 @@ const { createHttpError } = require("../utils/httpError");
 const MAX_TOOL_ROUNDS = 6;
 const GUIDE_PATH = path.join(__dirname, "..", "..", "docs", "admin-guide.md");
 
-let client = null;
-function anthropic() {
-  if (!client) {
-    const Ctor = Anthropic.default || Anthropic;
-    client = new Ctor({ apiKey: env.anthropicApiKey, maxRetries: 2, timeout: 60_000 });
+// Gemini REST (generateContent). Plain fetch -- no SDK -- so the free tier
+// needs nothing but an API key from Google AI Studio.
+async function geminiGenerate(body) {
+  const url = `${env.geminiApiBase.replace(/\/$/, "")}/models/${encodeURIComponent(env.aiModel)}:generateContent`;
+  for (let attempt = 0; ; attempt += 1) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": env.geminiApiKey },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(60_000)
+    });
+    if (res.ok) {
+      return res.json();
+    }
+    // One short retry on a transient overload; a 429 (free-tier quota) is not retried.
+    if (res.status === 503 && attempt === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      continue;
+    }
+    const detail = await res.json().catch(() => null);
+    const error = new Error(detail?.error?.message || `Gemini request failed (${res.status})`);
+    error.status = res.status;
+    throw error;
   }
-  return client;
+}
+
+// Gemini accepts an OpenAPI subset: no additionalProperties, and an object with
+// no properties must be left out entirely.
+function toFunctionDeclaration({ name, description, input_schema: schema }) {
+  const declaration = { name, description };
+  if (schema && Object.keys(schema.properties || {}).length) {
+    const properties = {};
+    for (const [key, value] of Object.entries(schema.properties)) {
+      properties[key] = { type: value.type, ...(value.description ? { description: value.description } : {}) };
+    }
+    declaration.parameters = { type: "object", properties, ...(schema.required?.length ? { required: schema.required } : {}) };
+  }
+  return declaration;
 }
 
 const isoDate = (date) => date.toISOString().slice(0, 10);
@@ -247,56 +277,52 @@ function systemPrompt(scope) {
 
 async function runModel({ prompt, scope, admin }) {
   const tools = await allowedTools(admin);
-  const toolDefs = tools.map(({ name, description, input_schema }) => ({ name, description, input_schema }));
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
-  const messages = [{ role: "user", content: `${prompt}\n\n(Today is ${today}.)` }];
+  const contents = [{ role: "user", parts: [{ text: `${prompt}\n\n(Today is ${today}.)` }] }];
   const toolsUsed = [];
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
-    const response = await anthropic().beta.messages.create({
-      model: env.aiModel,
-      max_tokens: 4000,
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      output_config: { effort: env.aiEffort },
-      system: systemPrompt(scope),
-      tools: toolDefs,
-      messages
+    const response = await geminiGenerate({
+      systemInstruction: { parts: [{ text: systemPrompt(scope) }] },
+      contents,
+      tools: [{ functionDeclarations: tools.map(toFunctionDeclaration) }],
+      toolConfig: { functionCallingConfig: { mode: "AUTO" } },
+      generationConfig: { maxOutputTokens: 4000, temperature: 0.2 }
     });
 
-    if (response.stop_reason === "refusal") {
+    const candidate = response.candidates?.[0];
+    const blocked = Boolean(response.promptFeedback?.blockReason) || ["SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "RECITATION"].includes(candidate?.finishReason);
+    if (blocked || !candidate) {
       return { answer: null, refused: true, toolsUsed };
     }
-    if (response.stop_reason === "pause_turn") {
-      messages.push({ role: "assistant", content: response.content });
-      continue;
-    }
-    const toolUses = response.content.filter((block) => block.type === "tool_use");
-    if (response.stop_reason !== "tool_use" || toolUses.length === 0) {
-      const answer = response.content.filter((block) => block.type === "text").map((block) => block.text).join("\n").trim();
-      return { answer, toolsUsed, model: response.model };
+    const parts = candidate.content?.parts || [];
+    const calls = parts.filter((part) => part.functionCall);
+    if (calls.length === 0) {
+      const answer = parts.filter((part) => part.text && !part.thought).map((part) => part.text).join("\n").trim();
+      return { answer, toolsUsed, model: response.modelVersion || env.aiModel };
     }
 
-    messages.push({ role: "assistant", content: response.content });
+    // Echo the model turn back verbatim (keeps any thought signatures intact).
+    contents.push({ role: "model", parts });
     const results = await Promise.all(
-      toolUses.map(async (block) => {
-        const tool = byName.get(block.name);
-        toolsUsed.push(block.name);
+      calls.map(async ({ functionCall: call }) => {
+        const tool = byName.get(call.name);
+        toolsUsed.push(call.name);
+        const part = (payload) => ({ functionResponse: { name: call.name, ...(call.id ? { id: call.id } : {}), response: payload } });
         if (!tool) {
-          return { type: "tool_result", tool_use_id: block.id, content: "Unknown tool.", is_error: true };
+          return part({ error: "Unknown tool." });
         }
         try {
-          const input = block.input && typeof block.input === "object" ? block.input : {};
-          const output = await tool.run(input, scope);
-          return { type: "tool_result", tool_use_id: block.id, content: JSON.stringify(output) };
+          const input = call.args && typeof call.args === "object" ? call.args : {};
+          return part({ result: await tool.run(input, scope) });
         } catch (error) {
-          appLogger.error({ error, tool: block.name }, "ai.tool_failed");
-          return { type: "tool_result", tool_use_id: block.id, content: "The tool failed to run.", is_error: true };
+          appLogger.error({ error, tool: call.name }, "ai.tool_failed");
+          return part({ error: "The tool failed to run." });
         }
       })
     );
-    messages.push({ role: "user", content: results });
+    contents.push({ role: "user", parts: results });
   }
   return { answer: null, toolsUsed, exhausted: true };
 }
@@ -330,7 +356,7 @@ async function ask({ prompt, scope, admin, ipAddress = null }) {
   let result;
   let status = "success";
   try {
-    if (env.anthropicApiKey) {
+    if (env.geminiApiKey) {
       const out = await runModel({ prompt: question, scope, admin });
       result = {
         mode: "ai",
@@ -344,7 +370,13 @@ async function ask({ prompt, scope, admin, ipAddress = null }) {
   } catch (error) {
     status = "failed";
     appLogger.error({ error: error.message, status: error.status }, "ai.ask_failed");
-    result = { mode: "error", answer: null, error: "The assistant is unavailable right now. Please try again shortly." };
+    result = {
+      mode: "error",
+      answer: null,
+      error: error.status === 429
+        ? "The assistant has reached its free usage limit for now. Please try again in a minute."
+        : "The assistant is unavailable right now. Please try again shortly."
+    };
   }
 
   const logBranch = scope.branchIds.length === 1 ? scope.branchIds[0] : null;

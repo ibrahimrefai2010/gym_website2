@@ -54,7 +54,7 @@ All changes since `main` (the `feature/admin-core` → `feature/invoicing` → `
 
 ## AI assistant
 
-- Claude-backed (`claude-opus-5-5`), read-only branch-scoped tools (KPIs, revenue, expiring, at-risk, unpaid, attendance, churn, VAT, admin guide), drafts only, no member contact details sent, permission-filtered tools, per-admin rate limit, audit-logged, feature flag; deterministic daily insights on the dashboard.
+- Gemini-backed (Google Gemini API free tier, default `gemini-2.5-flash`), read-only branch-scoped tools (KPIs, revenue, expiring, at-risk, unpaid, attendance, churn, VAT, admin guide), drafts only, no member contact details sent, permission-filtered tools, per-admin rate limit, audit-logged, feature flag; deterministic daily insights on the dashboard.
 
 ## Import / export
 

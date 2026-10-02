@@ -67,9 +67,9 @@ const env = {
 
   // AI assistant (Part 2 §2.3). Off unless explicitly enabled.
   aiAssistantEnabled: boolEnv("AI_ASSISTANT_ENABLED", false),
-  anthropicApiKey: process.env.ANTHROPIC_API_KEY || "",
-  aiModel: process.env.AI_MODEL || "claude-opus-5-5",
-  aiEffort: ["low", "medium", "high", "xhigh", "max"].includes(process.env.AI_EFFORT) ? process.env.AI_EFFORT : "low",
+  geminiApiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "",
+  geminiApiBase: process.env.GEMINI_API_BASE || "https://generativelanguage.googleapis.com/v1beta",
+  aiModel: process.env.AI_MODEL || "gemini-2.5-flash",
   aiRateLimitPerHour: intEnv("AI_RATE_LIMIT_PER_HOUR", 30),
 
   // Moyasar — the only online payment provider.

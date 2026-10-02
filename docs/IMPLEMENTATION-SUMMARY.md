@@ -45,7 +45,7 @@ New in this round: `202610010001_moyasar_payments`, `…0002_zakat_worksheets`, 
 
 - `nginx.conf`: a second server block for `women.yourdomain.com` proxying to the same app; DNS record + certificate needed (README → Deployment).
 - `CORS_ORIGIN` is a comma-separated allowlist and **must list both domains**. It is also what validates the host used for Moyasar return URLs, `robots.txt` and `sitemap.xml` (a spoofed Host header can't inject URLs).
-- New variables: `MOYASAR_*` (incl. `MOYASAR_WEBHOOK_SECRET`, `MOYASAR_INVOICE_TTL_MINUTES`), `AI_ASSISTANT_ENABLED`, `ANTHROPIC_API_KEY`, `AI_MODEL`, `AI_EFFORT`, `AI_RATE_LIMIT_PER_HOUR`, `RATE_LIMIT_ADMIN_LOGIN`, `MYSQLDUMP_PATH`; existing `GA4_MEASUREMENT_ID`, `META_PIXEL_ID`, `BACKUP_CRON`, `BACKUP_RETENTION_DAYS` are now actually used.
+- New variables: `MOYASAR_*` (incl. `MOYASAR_WEBHOOK_SECRET`, `MOYASAR_INVOICE_TTL_MINUTES`), `AI_ASSISTANT_ENABLED`, `GEMINI_API_KEY`, `AI_MODEL`, `AI_RATE_LIMIT_PER_HOUR`, `RATE_LIMIT_ADMIN_LOGIN`, `MYSQLDUMP_PATH`; existing `GA4_MEASUREMENT_ID`, `META_PIXEL_ID`, `BACKUP_CRON`, `BACKUP_RETENTION_DAYS` are now actually used.
 - Content-Security-Policy now allows `googletagmanager.com` and `connect.facebook.net` (loaded only after cookie consent).
 
 ## SEO per branch (§2.5)
@@ -54,7 +54,7 @@ Subdomains were chosen, so each branch is its own site for search engines: its o
 
 ## Test results
 
-`npm test` — **103 tests, all passing** against the real development MySQL database (database tests skip themselves when no database is configured):
+`npm test` — **104 tests, all passing** against the real development MySQL database (database tests skip themselves when no database is configured):
 
 | Suite | Tests | Covers |
 |---|---|---|
@@ -71,7 +71,7 @@ Subdomains were chosen, so each branch is its own site for search engines: its o
 | imports | 4 | Preview writes nothing, commit once, other branch can't commit, update mode, exports, backup has no secrets |
 | staffOps | 4 | Forced password change, super_admin protection, audit log scoping, bell feed |
 | cms | 5 | Contact/FAQ/slide branch rules, scheduling, reorder, plan in use, VAT details |
-| aiAssistant | 3 | Tools return only the scoped branch, no phone numbers, permission-filtered tools, fallback header sent, flag off removes it |
+| aiAssistant | 4 | Tools return only the scoped branch, no phone numbers, permission-filtered tools, Gemini-compatible schemas, free-quota (429) message, flag off removes it |
 | publicSite | 4 | robots/sitemap (spoofed host), 404/500, CSP, bootstrap |
 
 Moyasar and the AI assistant are tested against local mocks of their APIs. **Before going live, run the test-mode checklist in README → Online payments against Moyasar's real sandbox** (a mada payment, a card payment, a declined card, a re-delivered webhook).

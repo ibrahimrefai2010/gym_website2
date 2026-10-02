@@ -24,7 +24,7 @@ function ensureEnabled() {
 }
 
 async function status(_req, res) {
-  res.json({ success: true, data: { enabled: env.aiAssistantEnabled, mode: env.anthropicApiKey ? "ai" : "basic" } });
+  res.json({ success: true, data: { enabled: env.aiAssistantEnabled, mode: env.geminiApiKey ? "ai" : "basic" } });
 }
 
 async function ask(req, res) {
